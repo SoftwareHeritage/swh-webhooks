@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (C) 2019-2023  The Software Heritage developers
+# Copyright (C) The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -36,18 +36,15 @@ def parse_requirements(*names):
     return requirements
 
 
-# Edit this part to match your module, replace foo by its name
-# Full sample:
-#   https://gitlab.softwareheritage.org/swh/devel/swh-core/-/blob/master/setup.py
 setup(
-    name="swh.foo",  # example: swh.loader.pypi
-    description="Software Heritage <Module's intent>",
+    name="swh.webhooks",
+    description="Software Heritage Webhooks management",
     long_description=long_description,
     long_description_content_type="text/x-rst",
     python_requires=">=3.7",
     author="Software Heritage developers",
     author_email="swh-devel@inria.fr",
-    url="https://gitlab.softwareheritage.org/swh/devel/swh-foo",
+    url="https://gitlab.softwareheritage.org/swh/devel/swh-webhooks",
     packages=find_packages(),  # packages's modules
     install_requires=parse_requirements(None, "swh"),
     tests_require=parse_requirements("test"),
@@ -57,7 +54,7 @@ setup(
     include_package_data=True,
     entry_points="""
         [swh.cli.subcommands]
-        foo=swh.foo.cli
+        webhooks=swh.webhooks.cli
     """,
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -67,9 +64,9 @@ setup(
         "Development Status :: 3 - Alpha",
     ],
     project_urls={
-        "Bug Reports": "https://gitlab.softwareheritage.org/swh/devel/swh-foo/-/issues",
+        "Bug Reports": "https://gitlab.softwareheritage.org/swh/devel/swh-webhooks/-/issues",
         "Funding": "https://www.softwareheritage.org/donate",
-        "Source": "https://gitlab.softwareheritage.org/swh/devel/swh-foo",
-        "Documentation": "https://docs.softwareheritage.org/devel/swh-foo/",
+        "Source": "https://gitlab.softwareheritage.org/swh/devel/swh-webhooks",
+        "Documentation": "https://docs.softwareheritage.org/devel/swh-webhooks/",
     },
 )

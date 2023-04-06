@@ -1,4 +1,4 @@
-.. _swh-foo:
+.. _swh-webhooks:
 
 .. include:: README.rst
 

@@ -1,4 +1,4 @@
-Software Heritage - Python module template
-==========================================
+Software Heritage - Webhooks
+============================
 
-Python module template, used as skeleton to create new modules.
+Python package to manage Software Heritage Webhooks.
