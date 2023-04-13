@@ -1,0 +1,46 @@
+version: "3.7"
+services:
+  backend:
+    image: svix/svix-server
+    environment:
+      WAIT_FOR: "true" # We want to wait for the default services
+    volumes:
+      - "./config.toml:/config.toml:ro"
+    ports:
+      - "8071:8071"
+    depends_on:
+      - pgbouncer
+      - redis
+
+  postgres:
+    image: postgres:13.4
+    volumes:
+      - "postgres-data:/var/lib/postgresql/data/"
+    environment:
+      POSTGRES_PASSWORD: postgres
+
+  pgbouncer:
+    image: edoburu/pgbouncer:1.15.0
+    healthcheck:
+      test: "pg_isready -h localhost"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    environment:
+      DB_HOST: "postgres"
+      DB_USER: "postgres"
+      DB_PASSWORD: "postgres"
+      MAX_CLIENT_CONN: 500
+    depends_on:
+      - postgres
+
+  redis:
+    image: "redis:6.2-alpine"
+    # Enable persistence
+    command: "--save 60 500 --appendonly yes --appendfsync everysec"
+    volumes:
+      - "redis-data:/data"
+
+volumes:
+  postgres-data:
+  redis-data:

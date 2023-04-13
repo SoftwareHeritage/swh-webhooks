@@ -1,1 +1,8 @@
+docker-compose
 pytest
+pytest-docker-compose
+pytest-mock
+types-jsonschema
+types-PyYAML
+types-requests
+types-urllib3
