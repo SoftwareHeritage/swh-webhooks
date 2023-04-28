@@ -3,18 +3,22 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 import uuid
 
 from jsonschema.validators import Draft7Validator
 from svix.api import (
     ApplicationIn,
+    EndpointHeadersIn,
+    EndpointIn,
+    EndpointListOptions,
     EventTypeIn,
     EventTypeListOptions,
     EventTypeUpdate,
+    Ordering,
     Svix,
     SvixOptions,
 )
@@ -72,6 +76,26 @@ class EventType:
     """description of the event type"""
     schema: Dict[str, Any]
     """JSON schema describing the payload sent when the event is triggered"""
+
+
+@dataclass
+class Endpoint:
+    """Webhook user endpoint definition"""
+
+    url: str
+    """URL of the endpoint to receive webhook messages"""
+    event_type_name: str
+    """The type of event the endpoint receives"""
+    channel: Optional[str] = None
+    """Optional channel this endpoint listens to, channels are an extra
+    dimension of filtering messages that is orthogonal to event types"""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    """Optional metadata associated to the endpoint"""
+
+    @property
+    def uid(self):
+        """Unique identifier for the endpoint"""
+        return _gen_uuid(f"{self.event_type_name}-{self.url}-{self.channel}")
 
 
 class Webhooks:
@@ -213,3 +237,158 @@ class Webhooks:
                 raise ValueError(f"Event type {event_type_name} does not exist")
             else:
                 raise
+
+    def endpoint_create(self, endpoint: Endpoint) -> None:
+        """Create an endpoint to receive webhook messages.
+
+        Args:
+            endpoint: the endpoint to create
+
+        Raises:
+            ValueError: if the event type associated to the endpoint does not exist
+            svix.exceptions.HTTPError: if a request to the Svix REST API fails
+        """
+        self.event_type_get(endpoint.event_type_name)
+
+        _, app_uid = _get_app_name_and_uid(endpoint.event_type_name)
+        endpoint_uid = endpoint.uid
+
+        metadata = dict(endpoint.metadata)
+        channel = None
+        if endpoint.channel is not None:
+            # Svix channel names are limited to 128 characters and must be matched by
+            # the following regular expression: ^[a-zA-Z0-9\-_.]+$, so we use their UUID5
+            # values instead and store the names mapping in the endpoint metadata
+            channel = _gen_uuid(endpoint.channel)
+            metadata[channel] = endpoint.channel
+
+        try:
+            self.svix_api.endpoint.create(
+                app_uid,
+                EndpointIn(
+                    url=endpoint.url,
+                    uid=endpoint_uid,
+                    version=1,
+                    filter_types=[endpoint.event_type_name],
+                    channels=[channel] if channel else None,
+                    metadata=metadata,
+                ),
+            )
+        except HttpError as http_error:
+            if http_error.to_dict()["code"] != "conflict":
+                raise
+
+        # Add SWH event type name in webhook POST request headers
+        self.svix_api.endpoint.update_headers(
+            app_uid,
+            endpoint_uid,
+            EndpointHeadersIn(headers={"X-Swh-Event": endpoint.event_type_name}),
+        )
+
+    def endpoints_list(
+        self,
+        event_type_name: str,
+        channel: Optional[str] = None,
+        ascending_order: bool = False,
+        limit: Optional[int] = None,
+    ) -> Iterator[Endpoint]:
+        """List all endpoints receiving messages for a given event type.
+
+        Args:
+            event_type_name: the name of the event type to retrieve associated endpoints
+            channel: optional channel name, only endpoints listening to it are listed
+                if provided, please not that endpoints not listening to any channel receive
+                all events and are always listed
+            ascending_order: whether to retrieve endpoints in the order they were created
+            limit: maximum number of endpoints to list
+
+        Yields:
+            Endpoints listening to the event type
+
+        Raises:
+            ValueError: if the event type does not exist
+            svix.exceptions.HTTPError: if a request to the Svix REST API fails
+
+        """
+        self.event_type_get(event_type_name)
+        _, app_uid = _get_app_name_and_uid(event_type_name)
+
+        iterator = None
+        nb_listed_endpoints = 0
+        while True:
+            endpoints_out = self.svix_api.endpoint.list(
+                app_uid,
+                EndpointListOptions(
+                    iterator=iterator,
+                    order=Ordering.ASCENDING
+                    if ascending_order
+                    else Ordering.DESCENDING,
+                ),
+            )
+            for endpoint in endpoints_out.data:
+                filter_types = endpoint.filter_types
+                assert isinstance(filter_types, list)
+                if event_type_name in filter_types:
+                    metadata = endpoint.metadata
+                    assert isinstance(metadata, dict)
+                    channels_in = endpoint.channels
+                    channel_out = None
+                    if channels_in is not None and isinstance(channels_in, list):
+                        channel_out = endpoint.metadata.pop(channels_in[0])
+                    if channel_out is None or channel_out == channel:
+                        nb_listed_endpoints += 1
+                        yield Endpoint(
+                            url=endpoint.url,
+                            event_type_name=event_type_name,
+                            channel=channel_out,
+                            metadata=metadata,
+                        )
+                        if limit and nb_listed_endpoints == limit:
+                            break
+
+            iterator = endpoints_out.iterator
+
+            if endpoints_out.done or (limit and nb_listed_endpoints == limit):
+                break
+
+    def endpoint_get_secret(self, endpoint: Endpoint) -> str:
+        """Get secret for given endpoint to verify webhook signatures.
+
+        Args:
+            endpoint: The endpoint to retrieve the secret
+
+        Returns:
+            The endpoint's secret.
+
+        Raises:
+            ValueError: if the endpoint does not exist
+            svix.exceptions.HTTPError: if a request to the Svix REST API fails
+        """
+        _, app_uid = _get_app_name_and_uid(endpoint.event_type_name)
+        endpoint_uid = endpoint.uid
+        try:
+            secret_out = self.svix_api.endpoint.get_secret(app_uid, endpoint_uid)
+        except HttpError as http_error:
+            if http_error.to_dict()["code"] == "not_found":
+                raise ValueError(f"{endpoint} does not exist")
+            else:
+                raise
+        return secret_out.key
+
+    def endpoint_delete(self, endpoint: Endpoint) -> None:
+        """Delete an endpoint.
+
+        Args:
+            endpoint: The endpoint to delete
+
+        Raises:
+            ValueError: if the endpoint does not exist
+            svix.exceptions.HTTPError: if a request to the Svix REST API fails
+        """
+        self.event_type_get(endpoint.event_type_name)
+        _, app_uid = _get_app_name_and_uid(endpoint.event_type_name)
+        try:
+            self.svix_api.endpoint.delete(app_uid, endpoint.uid)
+        except HttpError as http_error:
+            if http_error.to_dict()["code"] == "not_found":
+                raise ValueError(f"{endpoint} does not exist")

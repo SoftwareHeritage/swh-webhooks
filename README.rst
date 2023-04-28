@@ -23,3 +23,22 @@ It is composed of:
 - a description
 - a `JSON schema <https://json-schema.org/>`__ describing the JSON payload
   sent to endpoints
+
+
+Endpoint
+^^^^^^^^
+
+An endpoint is defined by an HTTP URL where events and their JSON data are sent to.
+An endpoint is created for a specific event type and an optional channel (each event
+type has its own list of endpoints).
+
+Channels are an extra dimension of filtering events that is orthogonal to event types.
+Events are sent (or not sent) to endpoints based on the following conditions:
+
+- Endpoint has no channel set: this is a catch-all, all events are sent to to it,
+  regardless of whether the event had a channel set.
+- Both endpoint and event have a channel set: if there's the same, the event is sent
+  to the endpoint.
+- Endpoint has a channel set and event has no channel set: the event is not sent to
+  the endpoint.
+
