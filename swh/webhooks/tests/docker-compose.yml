@@ -1,7 +1,11 @@
 version: "3.7"
 services:
-  backend:
+  svix-backend:
     image: svix/svix-server
+    network_mode: bridge
+    links:
+      - svix-postgres
+      - svix-redis
     environment:
       WAIT_FOR: "true" # We want to wait for the default services
     volumes:
@@ -9,38 +13,25 @@ services:
     ports:
       - "8071:8071"
     depends_on:
-      - pgbouncer
-      - redis
+      - svix-postgres
+      - svix-redis
 
-  postgres:
+  svix-postgres:
     image: postgres:13.4
+    network_mode: bridge
     volumes:
-      - "postgres-data:/var/lib/postgresql/data/"
+      - "svix-postgres-data:/var/lib/postgresql/data/"
     environment:
       POSTGRES_PASSWORD: postgres
 
-  pgbouncer:
-    image: edoburu/pgbouncer:1.15.0
-    healthcheck:
-      test: "pg_isready -h localhost"
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    environment:
-      DB_HOST: "postgres"
-      DB_USER: "postgres"
-      DB_PASSWORD: "postgres"
-      MAX_CLIENT_CONN: 500
-    depends_on:
-      - postgres
-
-  redis:
+  svix-redis:
     image: "redis:6.2-alpine"
+    network_mode: bridge
     # Enable persistence
     command: "--save 60 500 --appendonly yes --appendfsync everysec"
     volumes:
-      - "redis-data:/data"
+      - "svix-redis-data:/data"
 
 volumes:
-  postgres-data:
-  redis-data:
+  svix-postgres-data:
+  svix-redis-data:

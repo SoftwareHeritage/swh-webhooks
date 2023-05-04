@@ -4,11 +4,13 @@
 # See top-level LICENSE file for more information
 
 from dataclasses import dataclass, field
+from datetime import datetime
 import os
 import re
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 import uuid
 
+import jsonschema
 from jsonschema.validators import Draft7Validator
 from svix.api import (
     ApplicationIn,
@@ -18,6 +20,7 @@ from svix.api import (
     EventTypeIn,
     EventTypeListOptions,
     EventTypeUpdate,
+    MessageIn,
     Ordering,
     Svix,
     SvixOptions,
@@ -30,9 +33,10 @@ _webhooks_config: Dict[str, Any] = {}
 
 
 def _svix_api(
-    server_url: Optional[str] = None, auth_token: Optional[str] = None
+    svix_config: Dict[str, Any],
+    server_url: Optional[str] = None,
+    auth_token: Optional[str] = None,
 ) -> Svix:
-    svix_config = get_config().get("webhooks", {}).get("svix", {})
     return Svix(
         svix_config.get("auth_token", auth_token or ""),
         SvixOptions(server_url=svix_config.get("server_url", server_url or "")),
@@ -59,7 +63,7 @@ def get_config(config_file: str = "webhooks") -> Dict[str, Any]:
         if config_filename:
             config_file = config_filename
         _webhooks_config.update(load_named_config(config_file))
-    return _webhooks_config
+    return _webhooks_config.get("webhooks", {})
 
 
 @dataclass
@@ -118,7 +122,10 @@ class Webhooks:
         svix_server_url: Optional[str] = None,
         svix_auth_token: Optional[str] = None,
     ):
-        self.svix_api = _svix_api(svix_server_url, svix_auth_token)
+        self.config = get_config()
+        self.svix_api = _svix_api(
+            self.config.get("svix", {}), svix_server_url, svix_auth_token
+        )
 
     def event_type_create(self, event_type: EventType) -> None:
         """Create or update a webhook event type.
@@ -392,3 +399,45 @@ class Webhooks:
         except HttpError as http_error:
             if http_error.to_dict()["code"] == "not_found":
                 raise ValueError(f"{endpoint} does not exist")
+
+    def event_send(
+        self,
+        event_type_name: str,
+        payload: Dict[str, Any],
+        channel: Optional[str] = None,
+    ) -> Optional[Tuple[str, datetime]]:
+        """Send an event to registered endpoints.
+
+        Args:
+            event_type_name: the name of the event type to send
+            payload: JSON payload of the event
+            channel: optional channel name, channels are case-sensitive,
+                and endpoints that are filtering for a specific channel will only
+                get messages sent to that specific channel.
+
+        Returns:
+            Sent message id and timestamp as a tuple or :const:`None` if no endpoints
+            are listening to the event type.
+
+        Raises:
+            ValueError: if the event type does not exist
+            jsonschema.exceptions.ValidationError: if the payload does not match the
+                event schema
+            svix.exceptions.HTTPError: if a request to the Svix REST API fails
+        """
+        event_type = self.event_type_get(event_type_name)
+
+        jsonschema.validate(payload, event_type.schema)
+
+        _, app_uid = _get_app_name_and_uid(event_type_name)
+        message_out = self.svix_api.message.create(
+            app_uid,
+            MessageIn(
+                event_type=event_type_name,
+                payload=payload,
+                channels=[_gen_uuid(channel)] if channel else None,
+                payload_retention_period=self.config.get("event_retention_period", 90),
+            ),
+        )
+
+        return message_out.id, message_out.timestamp

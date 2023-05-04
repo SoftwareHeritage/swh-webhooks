@@ -3,11 +3,15 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
+from datetime import datetime
+import random
 import re
 import shutil
 
-from jsonschema.exceptions import SchemaError
+from jsonschema.exceptions import SchemaError, ValidationError
 import pytest
+from svix.webhooks import Webhook
+from werkzeug import Request, Response
 
 from swh.webhooks import Endpoint, EventType, Webhooks
 
@@ -93,50 +97,78 @@ def origin_visit_event_type():
     )
 
 
+WEBHOOK_FIRST_ENDPOINT_PATH = "/swh/webhook"
+WEBHOOK_SECOND_ENDPOINT_PATH = "/swh/webhook/other"
+WEBHOOK_THIRD_ENDPOINT_PATH = "/swh/webhook/another"
+
 FIRST_GIT_ORIGIN_URL = "https://git.example.org/user/project"
 SECOND_GIT_ORIGIN_URL = "https://git.example.org/user/project2"
 
 
-@pytest.fixture
-def origin_create_endpoint1_no_channel(origin_create_event_type):
+def _endpoint(httpserver, event_type, endpoint_path, channel=None):
     return Endpoint(
-        url="https://example.org/webhook/origin/created",
-        event_type_name=origin_create_event_type.name,
+        event_type_name=event_type.name,
+        url=httpserver.url_for(endpoint_path),
+        channel=channel,
     )
 
 
 @pytest.fixture
-def origin_create_endpoint2_no_channel(origin_create_event_type):
-    return Endpoint(
-        url="https://example.org/webhook/origin/created/other",
-        event_type_name=origin_create_event_type.name,
-    )
+def origin_create_endpoint1_no_channel(origin_create_event_type, httpserver):
+    return _endpoint(httpserver, origin_create_event_type, WEBHOOK_FIRST_ENDPOINT_PATH)
 
 
 @pytest.fixture
-def origin_visit_endpoint1_channel1(origin_visit_event_type):
-    return Endpoint(
-        url="https://example.org/webhook/origin/visited",
-        event_type_name=origin_visit_event_type.name,
+def origin_create_endpoint2_no_channel(origin_create_event_type, httpserver):
+    return _endpoint(httpserver, origin_create_event_type, WEBHOOK_SECOND_ENDPOINT_PATH)
+
+
+@pytest.fixture
+def origin_visit_endpoint1_channel1(origin_visit_event_type, httpserver):
+    return _endpoint(
+        httpserver,
+        origin_visit_event_type,
+        WEBHOOK_FIRST_ENDPOINT_PATH,
         channel=FIRST_GIT_ORIGIN_URL,
     )
 
 
 @pytest.fixture
-def origin_visit_endpoint2_channel2(origin_visit_event_type):
-    return Endpoint(
-        url="https://example.org/webhook/origin/visited/other",
-        event_type_name=origin_visit_event_type.name,
+def origin_visit_endpoint2_channel2(origin_visit_event_type, httpserver):
+    return _endpoint(
+        httpserver,
+        origin_visit_event_type,
+        WEBHOOK_SECOND_ENDPOINT_PATH,
         channel=SECOND_GIT_ORIGIN_URL,
     )
 
 
 @pytest.fixture
-def origin_visit_endpoint3_no_channel(origin_visit_event_type):
-    return Endpoint(
-        url="https://example.org/webhook/origin/visited/another",
-        event_type_name=origin_visit_event_type.name,
+def origin_visit_endpoint3_no_channel(origin_visit_event_type, httpserver):
+    return _endpoint(
+        httpserver,
+        origin_visit_event_type,
+        WEBHOOK_THIRD_ENDPOINT_PATH,
     )
+
+
+def origin_create_payload(origin_url):
+    return {"origin_url": origin_url}
+
+
+def origin_visit_payload(origin_url, visit_type, visit_status, snapshot_swhid):
+    return {
+        "origin_url": origin_url,
+        "visit_type": visit_type,
+        "visit_date": datetime.now().isoformat(),
+        "visit_status": visit_status,
+        "snapshot_swhid": snapshot_swhid,
+    }
+
+
+def random_snapshot_swhid():
+    random_sha1 = "".join(random.choice("0123456789abcdef") for i in range(40))
+    return f"swh:1:{random_sha1}"
 
 
 def test_create_valid_event_type(swh_webhooks, origin_create_event_type):
@@ -330,3 +362,191 @@ def test_delete_endpoint(
     assert list(swh_webhooks.endpoints_list(origin_create_event_type.name)) == [
         origin_create_endpoint1_no_channel
     ]
+
+
+def test_send_event_invalid_event_type(swh_webhooks):
+    with pytest.raises(ValueError, match="Event type foo.bar does not exist"):
+        swh_webhooks.event_send("foo.bar", {})
+
+
+def test_send_event_invalid_payload(
+    swh_webhooks,
+    origin_visit_event_type,
+):
+    payload = origin_visit_payload(
+        origin_url=FIRST_GIT_ORIGIN_URL,
+        visit_type="git",
+        visit_status="full",
+        snapshot_swhid="invalid_swhid",
+    )
+
+    swh_webhooks.event_type_create(origin_visit_event_type)
+
+    with pytest.raises(ValidationError, match="'invalid_swhid' does not match"):
+        swh_webhooks.event_send(origin_visit_event_type.name, payload)
+
+
+def test_send_event_without_channels_filtering(
+    swh_webhooks,
+    origin_create_event_type,
+    origin_create_endpoint1_no_channel,
+    origin_create_endpoint2_no_channel,
+    httpserver,
+):
+    swh_webhooks.event_type_create(origin_create_event_type)
+    swh_webhooks.endpoint_create(origin_create_endpoint1_no_channel)
+    swh_webhooks.endpoint_create(origin_create_endpoint2_no_channel)
+
+    origin_create_endpoint1_no_channel_secret = swh_webhooks.endpoint_get_secret(
+        origin_create_endpoint1_no_channel
+    )
+    origin_create_endpoint2_no_channel_secret = swh_webhooks.endpoint_get_secret(
+        origin_create_endpoint2_no_channel
+    )
+
+    def handler(request: Request) -> Response:
+        assert "Webhook-Id" in request.headers
+        assert "Webhook-Timestamp" in request.headers
+        assert "Webhook-Signature" in request.headers
+
+        if request.url.endswith(WEBHOOK_FIRST_ENDPOINT_PATH):
+            webhook = Webhook(origin_create_endpoint1_no_channel_secret)
+        else:
+            webhook = Webhook(origin_create_endpoint2_no_channel_secret)
+
+        webhook.verify(request.data, dict(request.headers))
+
+        return Response("OK")
+
+    first_origin_create_payload = origin_create_payload(FIRST_GIT_ORIGIN_URL)
+    second_origin_create_payload = origin_create_payload(SECOND_GIT_ORIGIN_URL)
+
+    httpserver.expect_oneshot_request(
+        WEBHOOK_FIRST_ENDPOINT_PATH,
+        method="POST",
+        json=first_origin_create_payload,
+    ).respond_with_handler(handler)
+
+    httpserver.expect_oneshot_request(
+        WEBHOOK_SECOND_ENDPOINT_PATH,
+        method="POST",
+        json=first_origin_create_payload,
+    ).respond_with_handler(handler)
+
+    httpserver.expect_oneshot_request(
+        WEBHOOK_FIRST_ENDPOINT_PATH,
+        method="POST",
+        json=second_origin_create_payload,
+    ).respond_with_handler(handler)
+
+    httpserver.expect_oneshot_request(
+        WEBHOOK_SECOND_ENDPOINT_PATH,
+        method="POST",
+        json=second_origin_create_payload,
+    ).respond_with_handler(handler)
+
+    with httpserver.wait() as waiting:
+        swh_webhooks.event_send(
+            origin_create_event_type.name, first_origin_create_payload
+        )
+        swh_webhooks.event_send(
+            origin_create_event_type.name, second_origin_create_payload
+        )
+
+    assert waiting.result
+
+    httpserver.check()
+
+
+def test_send_event_with_channels_filtering(
+    swh_webhooks,
+    origin_visit_event_type,
+    origin_visit_endpoint1_channel1,
+    origin_visit_endpoint2_channel2,
+    origin_visit_endpoint3_no_channel,
+    httpserver,
+):
+    swh_webhooks.event_type_create(origin_visit_event_type)
+    swh_webhooks.endpoint_create(origin_visit_endpoint1_channel1)
+    swh_webhooks.endpoint_create(origin_visit_endpoint2_channel2)
+    swh_webhooks.endpoint_create(origin_visit_endpoint3_no_channel)
+
+    origin_visit_endpoint1_channel1_secret = swh_webhooks.endpoint_get_secret(
+        origin_visit_endpoint1_channel1
+    )
+    origin_visit_endpoint2_channel2_secret = swh_webhooks.endpoint_get_secret(
+        origin_visit_endpoint2_channel2
+    )
+
+    origin_visit_endpoint3_no_channel_secret = swh_webhooks.endpoint_get_secret(
+        origin_visit_endpoint3_no_channel
+    )
+
+    def handler(request: Request) -> Response:
+        assert "Webhook-Id" in request.headers
+        assert "Webhook-Timestamp" in request.headers
+        assert "Webhook-Signature" in request.headers
+
+        if request.url.endswith(WEBHOOK_FIRST_ENDPOINT_PATH):
+            webhook = Webhook(origin_visit_endpoint1_channel1_secret)
+        elif request.url.endswith(WEBHOOK_SECOND_ENDPOINT_PATH):
+            webhook = Webhook(origin_visit_endpoint2_channel2_secret)
+        else:
+            webhook = Webhook(origin_visit_endpoint3_no_channel_secret)
+
+        webhook.verify(request.data, dict(request.headers))
+
+        return Response("OK")
+
+    first_origin_visit_payload = origin_visit_payload(
+        origin_url=FIRST_GIT_ORIGIN_URL,
+        visit_type="git",
+        visit_status="full",
+        snapshot_swhid=random_snapshot_swhid(),
+    )
+    second_origin_visit_payload = origin_visit_payload(
+        origin_url=SECOND_GIT_ORIGIN_URL,
+        visit_type="git",
+        visit_status="failed",
+        snapshot_swhid=None,
+    )
+
+    httpserver.expect_oneshot_request(
+        WEBHOOK_FIRST_ENDPOINT_PATH,
+        method="POST",
+        json=first_origin_visit_payload,
+    ).respond_with_handler(handler)
+
+    httpserver.expect_oneshot_request(
+        WEBHOOK_THIRD_ENDPOINT_PATH,
+        method="POST",
+        json=first_origin_visit_payload,
+    ).respond_with_handler(handler)
+
+    httpserver.expect_oneshot_request(
+        WEBHOOK_SECOND_ENDPOINT_PATH,
+        method="POST",
+        json=second_origin_visit_payload,
+    ).respond_with_handler(handler)
+
+    httpserver.expect_oneshot_request(
+        WEBHOOK_THIRD_ENDPOINT_PATH,
+        method="POST",
+        json=second_origin_visit_payload,
+    ).respond_with_handler(handler)
+
+    with httpserver.wait() as waiting:
+        swh_webhooks.event_send(
+            origin_visit_event_type.name,
+            first_origin_visit_payload,
+            channel=FIRST_GIT_ORIGIN_URL,
+        )
+        swh_webhooks.event_send(
+            origin_visit_event_type.name,
+            second_origin_visit_payload,
+            channel=SECOND_GIT_ORIGIN_URL,
+        )
+
+    assert waiting.result
+
+    httpserver.check()

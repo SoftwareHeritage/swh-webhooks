@@ -42,3 +42,13 @@ Events are sent (or not sent) to endpoints based on the following conditions:
 - Endpoint has a channel set and event has no channel set: the event is not sent to
   the endpoint.
 
+Event
+^^^^^
+
+An event of a given type can be sent with a JSON payload, its delivery will be attempted
+to all endpoints listening to the event type.
+
+If the JSON payload does not match the JSON schema of the event type, an error is raised.
+
+Event can optionally be sent on a specific channel orthogonal to the event type, the
+conditions of its develivery is detailed in the previous section.

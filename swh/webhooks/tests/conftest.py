@@ -6,6 +6,7 @@
 import os
 from subprocess import run
 
+import netifaces
 import pytest
 import requests
 from requests.adapters import HTTPAdapter
@@ -41,7 +42,7 @@ def svix_server(session_scoped_container_getter):
     request_session = requests.Session()
     retries = Retry(total=10, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
     request_session.mount("http://", HTTPAdapter(max_retries=retries))
-    _svix_service = session_scoped_container_getter.get("backend")
+    _svix_service = session_scoped_container_getter.get("svix-backend")
     api_url = f"{_SVIX_SERVER_URL}/api/v1/health/"
     response = request_session.get(api_url)
     assert response
@@ -58,8 +59,9 @@ def svix_server(session_scoped_container_getter):
 def svix_test_helper(mocker):
     """Setup communication with svix server and ensure stateless tests"""
     mocker.patch("swh.webhooks.get_config").return_value = {
-        "webhooks": {
-            "svix": {"server_url": _SVIX_SERVER_URL, "auth_token": _svix_auth_token}
+        "svix": {
+            "server_url": _SVIX_SERVER_URL,
+            "auth_token": _svix_auth_token,
         }
     }
     yield
@@ -68,3 +70,21 @@ def svix_test_helper(mocker):
         f"svix-server wipe --yes-i-know-what-im-doing {_SVIX_ORG_ID}"
     )
     _svix_service.start_exec(exec["Id"])
+
+
+def _httpserver_ip_address():
+    for interface in netifaces.interfaces():
+        for address in netifaces.ifaddresses(interface).get(netifaces.AF_INET, []):
+            server_ip_adress = address.get("addr", "")
+            if server_ip_adress.startswith("172.17.0."):
+                return server_ip_adress
+
+
+@pytest.fixture(scope="session")
+def httpserver_listen_address():
+    # Use IP address in the docker bridge network as server hostname in order for
+    # the svix server executed in a docker container to successfully send webhooks
+    # to the HTTP server executed on the host
+    httpserver_ip_address = _httpserver_ip_address()
+    assert httpserver_ip_address
+    return (httpserver_ip_address, 0)
