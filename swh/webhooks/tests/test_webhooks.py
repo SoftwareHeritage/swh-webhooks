@@ -3,10 +3,12 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
-from datetime import datetime
+from datetime import datetime, timezone
+from itertools import chain
 import random
 import re
 import shutil
+import time
 
 from jsonschema.exceptions import SchemaError, ValidationError
 import pytest
@@ -404,6 +406,9 @@ def test_send_event_without_channels_filtering(
         origin_create_endpoint2_no_channel
     )
 
+    request_headers = {}
+    request_payloads = {}
+
     def handler(request: Request) -> Response:
         assert "Webhook-Id" in request.headers
         assert "Webhook-Timestamp" in request.headers
@@ -415,6 +420,10 @@ def test_send_event_without_channels_filtering(
             webhook = Webhook(origin_create_endpoint2_no_channel_secret)
 
         webhook.verify(request.data, dict(request.headers))
+
+        key = (request.url, request.headers["Webhook-Id"])
+        request_headers[key] = dict(request.headers)
+        request_payloads[key] = request.json
 
         return Response("OK")
 
@@ -457,6 +466,24 @@ def test_send_event_without_channels_filtering(
 
     httpserver.check()
 
+    for sent_event in chain(
+        swh_webhooks.sent_events_list(origin_create_endpoint1_no_channel),
+        swh_webhooks.sent_events_list(origin_create_endpoint2_no_channel),
+    ):
+        assert sent_event.event_type_name == origin_create_event_type.name
+        assert sent_event.channel is None
+        assert sent_event.endpoint_url in (
+            origin_create_endpoint1_no_channel.url,
+            origin_create_endpoint2_no_channel.url,
+        )
+        assert sent_event.response == "OK"
+        assert sent_event.response_status_code == 200
+        key = (sent_event.endpoint_url, sent_event.msg_id)
+        assert sent_event.payload == request_payloads[key]
+        assert (
+            set(sent_event.headers.items()) - set(request_headers[key].items()) == set()
+        )
+
 
 def test_send_event_with_channels_filtering(
     swh_webhooks,
@@ -481,6 +508,8 @@ def test_send_event_with_channels_filtering(
     origin_visit_endpoint3_no_channel_secret = swh_webhooks.endpoint_get_secret(
         origin_visit_endpoint3_no_channel
     )
+    request_headers = {}
+    request_payloads = {}
 
     def handler(request: Request) -> Response:
         assert "Webhook-Id" in request.headers
@@ -493,6 +522,10 @@ def test_send_event_with_channels_filtering(
             webhook = Webhook(origin_visit_endpoint2_channel2_secret)
         else:
             webhook = Webhook(origin_visit_endpoint3_no_channel_secret)
+
+        key = (request.url, request.headers["Webhook-Id"])
+        request_headers[key] = dict(request.headers)
+        request_payloads[key] = request.json
 
         webhook.verify(request.data, dict(request.headers))
 
@@ -550,3 +583,73 @@ def test_send_event_with_channels_filtering(
     assert waiting.result
 
     httpserver.check()
+
+    for sent_event in chain(
+        swh_webhooks.sent_events_list(origin_visit_endpoint1_channel1),
+        swh_webhooks.sent_events_list(origin_visit_endpoint2_channel2),
+        swh_webhooks.sent_events_list(origin_visit_endpoint3_no_channel),
+    ):
+        assert sent_event.event_type_name == origin_visit_event_type.name
+        assert sent_event.channel in (FIRST_GIT_ORIGIN_URL, SECOND_GIT_ORIGIN_URL, None)
+        assert sent_event.endpoint_url in (
+            origin_visit_endpoint1_channel1.url,
+            origin_visit_endpoint2_channel2.url,
+            origin_visit_endpoint3_no_channel.url,
+        )
+        assert sent_event.response == "OK"
+        assert sent_event.response_status_code == 200
+        key = (sent_event.endpoint_url, sent_event.msg_id)
+        assert sent_event.payload == request_payloads[key]
+        assert (
+            set(sent_event.headers.items()) - set(request_headers[key].items()) == set()
+        )
+
+
+def test_list_sent_events_date_filtering(
+    swh_webhooks,
+    origin_create_event_type,
+    origin_create_endpoint1_no_channel,
+    httpserver,
+):
+    swh_webhooks.event_type_create(origin_create_event_type)
+    swh_webhooks.endpoint_create(origin_create_endpoint1_no_channel)
+
+    first_origin_create_payload = origin_create_payload(FIRST_GIT_ORIGIN_URL)
+
+    httpserver.expect_oneshot_request(
+        WEBHOOK_FIRST_ENDPOINT_PATH,
+        method="POST",
+        json=first_origin_create_payload,
+    ).respond_with_data("OK")
+
+    with httpserver.wait():
+        swh_webhooks.event_send(
+            origin_create_event_type.name, first_origin_create_payload
+        )
+
+    time.sleep(1)
+    date = datetime.now(tz=timezone.utc)
+
+    httpserver.expect_oneshot_request(
+        WEBHOOK_FIRST_ENDPOINT_PATH,
+        method="POST",
+        json=first_origin_create_payload,
+    ).respond_with_data("OK")
+
+    with httpserver.wait():
+        swh_webhooks.event_send(
+            origin_create_event_type.name, first_origin_create_payload
+        )
+
+    sent_events_before = list(
+        swh_webhooks.sent_events_list(origin_create_endpoint1_no_channel, before=date)
+    )
+
+    sent_events_after = list(
+        swh_webhooks.sent_events_list(origin_create_endpoint1_no_channel, after=date)
+    )
+
+    assert len(sent_events_before) == 1
+    assert len(sent_events_after) == 1
+
+    assert sent_events_before != sent_events_after
