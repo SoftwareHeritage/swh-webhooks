@@ -46,7 +46,7 @@ from svix.exceptions import HttpError
 from svix.internal.openapi_client.types import Unset
 from svix.webhooks import Webhook
 
-from swh.core.config import load_named_config
+from swh.core.config import load_from_envvar, read_raw_config
 
 _webhooks_config: Dict[str, Any] = {}
 
@@ -56,9 +56,15 @@ def _svix_api(
     server_url: Optional[str] = None,
     auth_token: Optional[str] = None,
 ) -> Svix:
+    svix_auth_token = svix_config.get("auth_token", auth_token or "")
+    if not svix_auth_token:
+        raise ValueError("Svix authentication token is missing")
+    svix_server_url = svix_config.get("server_url", server_url or "")
+    if not svix_server_url:
+        raise ValueError("Svix server URL is missing")
     return Svix(
-        svix_config.get("auth_token", auth_token or ""),
-        SvixOptions(server_url=svix_config.get("server_url", server_url or "")),
+        svix_auth_token,
+        SvixOptions(server_url=svix_server_url),
     )
 
 
@@ -70,7 +76,7 @@ def _get_app_name_and_uid(event_type_name: str) -> Tuple[str, str]:
     return event_type_name, _gen_uuid(event_type_name)
 
 
-def get_config(config_file: str = "webhooks") -> Dict[str, Any]:
+def get_config(config_file: Optional[str] = None) -> Dict[str, Any]:
     """Read the configuration file ``config_file``.
 
     If an environment variable ``SWH_CONFIG_FILENAME`` is defined, this
@@ -80,8 +86,9 @@ def get_config(config_file: str = "webhooks") -> Dict[str, Any]:
     if not _webhooks_config:
         config_filename = os.environ.get("SWH_CONFIG_FILENAME")
         if config_filename:
-            config_file = config_filename
-        _webhooks_config.update(load_named_config(config_file))
+            _webhooks_config.update(load_from_envvar())
+        elif config_file:
+            _webhooks_config.update(read_raw_config(config_file))
     return _webhooks_config.get("webhooks", {})
 
 
@@ -184,10 +191,11 @@ class Webhooks:
 
     def __init__(
         self,
+        config_file: Optional[str] = None,
         svix_server_url: Optional[str] = None,
         svix_auth_token: Optional[str] = None,
     ):
-        self.config = get_config()
+        self.config = get_config(config_file)
         self.svix_api = _svix_api(
             self.config.get("svix", {}), svix_server_url, svix_auth_token
         )

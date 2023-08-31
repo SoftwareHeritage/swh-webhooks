@@ -21,6 +21,14 @@ if shutil.which("docker") is None:
     pytest.skip("skipping tests as docker command is missing", allow_module_level=True)
 
 
+@pytest.fixture(autouse=True)
+def svix_config(mocker, svix_server_url, svix_auth_token):
+    """Setup communication with svix server"""
+    mocker.patch("swh.webhooks.get_config").return_value = {
+        "svix": {"server_url": svix_server_url, "auth_token": svix_auth_token}
+    }
+
+
 @pytest.fixture
 def swh_webhooks():
     return Webhooks()

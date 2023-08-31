@@ -1,6 +1,7 @@
 docker-compose
 netifaces
 pytest
+pytest-click
 pytest-docker-compose
 pytest-httpserver
 pytest-mock

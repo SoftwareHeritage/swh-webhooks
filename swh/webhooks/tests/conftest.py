@@ -56,14 +56,8 @@ def svix_server(session_scoped_container_getter):
 
 
 @pytest.fixture(autouse=True)
-def svix_test_helper(mocker):
-    """Setup communication with svix server and ensure stateless tests"""
-    mocker.patch("swh.webhooks.get_config").return_value = {
-        "svix": {
-            "server_url": _SVIX_SERVER_URL,
-            "auth_token": _svix_auth_token,
-        }
-    }
+def svix_wiper():
+    """Ensure stateless tests"""
     yield
     # wipe svix database after each test to ensure stateless tests
     exec = _svix_service.create_exec(
@@ -88,3 +82,13 @@ def httpserver_listen_address():
     httpserver_ip_address = _httpserver_ip_address()
     assert httpserver_ip_address
     return (httpserver_ip_address, 0)
+
+
+@pytest.fixture
+def svix_server_url():
+    return _SVIX_SERVER_URL
+
+
+@pytest.fixture
+def svix_auth_token():
+    return _svix_auth_token
