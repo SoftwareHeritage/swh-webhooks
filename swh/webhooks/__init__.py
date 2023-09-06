@@ -9,7 +9,6 @@ import json
 import os
 import re
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -44,6 +43,7 @@ from svix.api import (
     SvixOptions,
 )
 from svix.exceptions import HttpError
+from svix.internal.openapi_client.types import Unset
 from svix.webhooks import Webhook
 
 from swh.core.config import load_named_config
@@ -87,9 +87,6 @@ def get_config(config_file: str = "webhooks") -> Dict[str, Any]:
 
 SvixData = TypeVar("SvixData")
 SvixListIterator = Optional[str]
-
-if TYPE_CHECKING:
-    from svix.internal.openapi_client.types import Unset
 
 
 class SvixListResponse(Protocol[SvixData]):
