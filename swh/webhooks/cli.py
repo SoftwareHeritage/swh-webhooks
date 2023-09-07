@@ -3,6 +3,9 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
+import json
+from pathlib import Path
+
 import click
 
 from swh.core.cli import CONTEXT_SETTINGS
@@ -57,5 +60,38 @@ def webhooks_cli_group(ctx, config_file, svix_url, svix_token):
 
 
 @webhooks_cli_group.group("event-type")
-def webhooks_event_type_group():
+def event_type():
     pass
+
+
+@event_type.command("add")
+@click.argument("name", nargs=1, required=True)
+@click.argument("description", nargs=1, required=True)
+@click.argument(
+    "schema_file",
+    nargs=1,
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+)
+@click.pass_context
+def event_type_add(ctx, name, description, schema_file):
+    """Create or update a webhook event type.
+
+    NAME must be a string in the form '<group>.<event>'.
+
+    DESCRIPTION is a string giving info about the event type.
+
+    SCHEMA_FILE is a path to a JSON schema file describing event payload.
+    """
+    from swh.webhooks import EventType
+
+    try:
+        ctx.obj["webhooks"].event_type_create(
+            EventType(
+                name=name,
+                description=description,
+                schema=json.loads(Path(schema_file).read_text()),
+            )
+        )
+    except Exception as e:
+        ctx.fail(str(e))

@@ -5,6 +5,8 @@
 
 from datetime import datetime, timezone
 from itertools import chain
+import json
+from pathlib import Path
 import random
 import re
 import shutil
@@ -35,75 +37,24 @@ def swh_webhooks():
 
 
 @pytest.fixture
-def origin_create_event_type():
+def origin_create_event_type(datadir):
     return EventType(
         name="origin.create",
         description=(
             "This event is triggered when a new software origin is added to the archive"
         ),
-        schema={
-            "type": "object",
-            "properties": {
-                "origin_url": {
-                    "type": "string",
-                    "description": "The URL of the newly created software origin",
-                    "format": "iri",
-                },
-            },
-            "required": ["origin_url"],
-        },
+        schema=json.loads(Path(datadir, "origin_create.json").read_text()),
     )
 
 
 @pytest.fixture
-def origin_visit_event_type():
+def origin_visit_event_type(datadir):
     return EventType(
         name="origin.visit",
         description=(
             "This event is triggered when a new visit of a software origin was performed"
         ),
-        schema={
-            "type": "object",
-            "properties": {
-                "origin_url": {
-                    "type": "string",
-                    "description": "The URL of the visited software origin",
-                    "format": "iri",
-                },
-                "visit_type": {
-                    "type": "string",
-                    "description": "The type of visit performed",
-                },
-                "visit_date": {
-                    "type": "string",
-                    "format": "date-time",
-                    "description": "The date the visit was performed",
-                },
-                "visit_status": {
-                    "type": "string",
-                    "enum": [
-                        "created",
-                        "ongoing",
-                        "full",
-                        "partial",
-                        "not_found",
-                        "failed",
-                    ],
-                    "description": "The status of the visit",
-                },
-                "snapshot_swhid": {
-                    "type": ["string", "null"],
-                    "pattern": "^swh:[0-9]:[0-9a-f]{40}$",
-                },
-            },
-            "required": [
-                "origin_url",
-                "visit_type",
-                "visit_date",
-                "visit_status",
-                "snapshot_swhid",
-            ],
-        },
+        schema=json.loads(Path(datadir, "origin_visit.json").read_text()),
     )
 
 

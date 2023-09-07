@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "origin_url": {
+      "type": "string",
+      "description": "The URL of the newly created software origin",
+      "format": "iri"
+    }
+  },
+  "required": [
+    "origin_url"
+  ]
+}

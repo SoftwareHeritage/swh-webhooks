@@ -8,7 +8,13 @@ import textwrap
 
 import pytest
 
+from swh.webhooks import Webhooks
 from swh.webhooks.cli import webhooks_cli_group as cli
+
+
+@pytest.fixture
+def swh_webhooks(svix_server_url, svix_auth_token):
+    return Webhooks(svix_server_url=svix_server_url, svix_auth_token=svix_auth_token)
 
 
 def test_cli_missing_svix_token(cli_runner):
@@ -74,3 +80,47 @@ def test_cli_svix_config_using_configfile_envvar(
     monkeypatch.setenv("SWH_CONFIG_FILENAME", configfile_path)
     result = cli_runner.invoke(cli, ["-C", configfile_path, "event-type"])
     assert result.exit_code == 0
+
+
+@pytest.fixture
+def add_event_type_cmd(datadir):
+    return [
+        "event-type",
+        "add",
+        "origin.create",
+        "This event is triggered when a new software origin is added to the archive",
+        os.path.join(datadir, "origin_create.json"),
+    ]
+
+
+@pytest.fixture
+def valid_svix_credentials_options(svix_server_url, svix_auth_token):
+    return ["-u", svix_server_url, "-t", svix_auth_token]
+
+
+@pytest.fixture
+def invalid_svix_credentials_options(svix_server_url):
+    return ["-u", svix_server_url, "-t", "foo"]
+
+
+def test_cli_add_event_type_auth_error(
+    cli_runner, invalid_svix_credentials_options, add_event_type_cmd
+):
+    result = cli_runner.invoke(
+        cli, invalid_svix_credentials_options + add_event_type_cmd
+    )
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Svix server returned error 'authentication_failed' with detail 'Invalid token'"
+        in result.output
+    )
+
+
+def test_cli_add_event_type(
+    cli_runner, valid_svix_credentials_options, add_event_type_cmd, swh_webhooks
+):
+    result = cli_runner.invoke(cli, valid_svix_credentials_options + add_event_type_cmd)
+    assert result.exit_code == 0
+
+    assert swh_webhooks.event_type_get("origin.create")

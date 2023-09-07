@@ -48,8 +48,6 @@ from svix.webhooks import Webhook
 
 from swh.core.config import load_from_envvar, read_raw_config
 
-_webhooks_config: Dict[str, Any] = {}
-
 
 def _svix_api(
     svix_config: Dict[str, Any],
@@ -83,13 +81,13 @@ def get_config(config_file: Optional[str] = None) -> Dict[str, Any]:
     takes precedence over the ``config_file`` parameter.
 
     """
-    if not _webhooks_config:
-        config_filename = os.environ.get("SWH_CONFIG_FILENAME")
-        if config_filename:
-            _webhooks_config.update(load_from_envvar())
-        elif config_file:
-            _webhooks_config.update(read_raw_config(config_file))
-    return _webhooks_config.get("webhooks", {})
+    webhooks_config = {}
+    config_filename = os.environ.get("SWH_CONFIG_FILENAME")
+    if config_filename:
+        webhooks_config.update(load_from_envvar())
+    elif config_file:
+        webhooks_config.update(read_raw_config(config_file))
+    return webhooks_config.get("webhooks", {})
 
 
 SvixData = TypeVar("SvixData")
@@ -112,6 +110,18 @@ def svix_list(
         iterator = response.iterator
         if response.done:
             break
+
+
+class SvixHttpError(Exception):
+    def __init__(self, error_dict: Dict[str, str]):
+        self.error_code = error_dict.get("code", "")
+        self.error_detail = error_dict.get("detail", "")
+
+    def __str__(self) -> str:
+        return (
+            f"Svix server returned error '{self.error_code}' "
+            f"with detail '{self.error_detail}'."
+        )
 
 
 @dataclass
@@ -220,11 +230,11 @@ class Webhooks:
         # we create one svix application per event type that gathers
         # all endpoints receiving it
         app_name, app_uid = _get_app_name_and_uid(event_type.name)
-        self.svix_api.application.get_or_create(
-            ApplicationIn(name=app_name, uid=app_uid)
-        )
 
         try:
+            self.svix_api.application.get_or_create(
+                ApplicationIn(name=app_name, uid=app_uid)
+            )
             self.svix_api.event_type.create(
                 EventTypeIn(
                     name=event_type.name,
@@ -233,7 +243,8 @@ class Webhooks:
                 )
             )
         except HttpError as http_error:
-            if http_error.to_dict()["code"] == "event_type_exists":
+            error_dict = http_error.to_dict()
+            if error_dict["code"] == "event_type_exists":
                 self.svix_api.event_type.update(
                     event_type.name,
                     EventTypeUpdate(
@@ -242,7 +253,7 @@ class Webhooks:
                     ),
                 )
             else:
-                raise
+                raise SvixHttpError(error_dict)
 
     def event_type_get(self, event_type_name) -> EventType:
         """Get an event type by its name.
