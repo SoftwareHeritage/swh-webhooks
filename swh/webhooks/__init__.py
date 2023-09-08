@@ -278,10 +278,11 @@ class Webhooks:
                 schema=event_type.schemas.get("1"),  # type: ignore
             )
         except HttpError as http_error:
-            if http_error.to_dict()["code"] == "not_found":
+            error_dict = http_error.to_dict()
+            if error_dict["code"] == "not_found":
                 raise ValueError(f"Event type {event_type_name} does not exist")
             else:
-                raise
+                raise SvixHttpError(error_dict)
 
     def event_types_list(self) -> List[EventType]:
         """List all registered event types.

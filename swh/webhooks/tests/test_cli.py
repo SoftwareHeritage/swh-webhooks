@@ -8,7 +8,7 @@ import textwrap
 
 import pytest
 
-from swh.webhooks import Webhooks
+from swh.webhooks import EventType, Webhooks
 from swh.webhooks.cli import webhooks_cli_group as cli
 
 
@@ -124,3 +124,74 @@ def test_cli_add_event_type(
     assert result.exit_code == 0
 
     assert swh_webhooks.event_type_get("origin.create")
+
+
+def test_cli_get_event_type_auth_error(cli_runner, invalid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        invalid_svix_credentials_options
+        + [
+            "event-type",
+            "get",
+            "origin.create",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Svix server returned error 'authentication_failed' with detail 'Invalid token'"
+        in result.output
+    )
+
+
+def test_cli_get_event_type(
+    cli_runner,
+    valid_svix_credentials_options,
+    swh_webhooks,
+):
+    event_type = EventType(
+        name="origin.create",
+        description="origin creation",
+        schema={"type": "object"},
+    )
+    swh_webhooks.event_type_create(event_type)
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event-type",
+            "get",
+            "origin.create",
+        ],
+    )
+    assert result.exit_code == 0
+    assert f"{event_type.description}\n" in result.output
+    assert '"type": "object"' in result.output
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event-type",
+            "get",
+            "--dump-schema",
+            "origin.create",
+        ],
+    )
+    assert result.output == '{"type": "object"}\n'
+
+
+def test_cli_get_event_type_unknown(cli_runner, valid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event-type",
+            "get",
+            "foo.bar",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert "Error: Event type foo.bar does not exist" in result.output

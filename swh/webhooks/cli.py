@@ -5,6 +5,7 @@
 
 import json
 from pathlib import Path
+import textwrap
 
 import click
 
@@ -93,5 +94,31 @@ def event_type_add(ctx, name, description, schema_file):
                 schema=json.loads(Path(schema_file).read_text()),
             )
         )
+    except Exception as e:
+        ctx.fail(str(e))
+
+
+@event_type.command("get")
+@click.argument("name", nargs=1, required=True)
+@click.option(
+    "--dump-schema",
+    "-d",
+    is_flag=True,
+    help=("Only dump raw JSON schema to stdout."),
+)
+@click.pass_context
+def event_type_get(ctx, name, dump_schema):
+    """Get info about a webhook event type.
+
+    NAME must be a string in the form '<group>.<event>'.
+    """
+    try:
+        event_type = ctx.obj["webhooks"].event_type_get(name)
+        if dump_schema:
+            click.echo(json.dumps(event_type.schema))
+        else:
+            click.echo(f"Description:\n  {event_type.description}\n")
+            click.echo("JSON schema for payload:")
+            click.echo(textwrap.indent(json.dumps(event_type.schema, indent=4), "  "))
     except Exception as e:
         ctx.fail(str(e))
