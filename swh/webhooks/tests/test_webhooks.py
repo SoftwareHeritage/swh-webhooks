@@ -129,7 +129,7 @@ def origin_visit_payload(origin_url, visit_type, visit_status, snapshot_swhid):
 
 def random_snapshot_swhid():
     random_sha1 = "".join(random.choice("0123456789abcdef") for i in range(40))
-    return f"swh:1:{random_sha1}"
+    return f"swh:1:snp:{random_sha1}"
 
 
 def test_create_valid_event_type(swh_webhooks, origin_create_event_type):
