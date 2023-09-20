@@ -122,3 +122,21 @@ def event_type_get(ctx, name, dump_schema):
             click.echo(textwrap.indent(json.dumps(event_type.schema, indent=4), "  "))
     except Exception as e:
         ctx.fail(str(e))
+
+
+@event_type.command("delete")
+@click.argument("name", nargs=1, required=True)
+@click.pass_context
+def event_type_delete(ctx, name):
+    """Delete a webhook event type.
+
+    The event type is not removed from database but is archived, it is
+    no longer listed and no more events of this type can be sent after
+    this operation. It can be unarchived by creating it again.
+
+    NAME must be a string in the form '<group>.<event>'.
+    """
+    try:
+        ctx.obj["webhooks"].event_type_delete(name)
+    except Exception as e:
+        ctx.fail(str(e))

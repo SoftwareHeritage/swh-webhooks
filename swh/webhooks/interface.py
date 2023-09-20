@@ -256,7 +256,7 @@ class Webhooks:
                 raise SvixHttpError(error_dict)
 
     def event_type_get(self, event_type_name) -> EventType:
-        """Get an event type by its name.
+        """Get an active event type by its name.
 
         Args:
             event_type_name: The name of the event type to retrieve
@@ -272,6 +272,9 @@ class Webhooks:
         try:
             event_type = self.svix_api.event_type.get(event_type_name)
 
+            if event_type.archived:
+                raise ValueError(f"Event type {event_type_name} is archived")
+
             return EventType(
                 name=event_type.name,
                 description=event_type.description,
@@ -285,7 +288,7 @@ class Webhooks:
                 raise SvixHttpError(error_dict)
 
     def event_types_list(self) -> List[EventType]:
-        """List all registered event types.
+        """List all registered and active event types.
 
         Raises:
             svix.exceptions.HTTPError: if a request to the Svix REST API fails
@@ -313,6 +316,10 @@ class Webhooks:
     def event_type_delete(self, event_type_name) -> None:
         """Delete an event type.
 
+        The event type is not removed from database but is archived, it is
+        no longer listed and no more events of this type can be sent after
+        this operation. It can be unarchived by creating it again.
+
         Args:
             event_type_name: The name of the event type to delete
 
@@ -323,10 +330,11 @@ class Webhooks:
         try:
             self.svix_api.event_type.delete(event_type_name)
         except HttpError as http_error:
-            if http_error.to_dict()["code"] == "not_found":
+            error_dict = http_error.to_dict()
+            if error_dict["code"] == "not_found":
                 raise ValueError(f"Event type {event_type_name} does not exist")
             else:
-                raise
+                raise SvixHttpError(error_dict)
 
     def endpoint_create(self, endpoint: Endpoint) -> None:
         """Create an endpoint to receive webhook messages.

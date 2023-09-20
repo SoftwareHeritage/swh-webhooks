@@ -195,3 +195,63 @@ def test_cli_get_event_type_unknown(cli_runner, valid_svix_credentials_options):
     assert result.exit_code != 0
 
     assert "Error: Event type foo.bar does not exist" in result.output
+
+
+def test_cli_delete_event_type_auth_error(cli_runner, invalid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        invalid_svix_credentials_options
+        + [
+            "event-type",
+            "delete",
+            "origin.create",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Svix server returned error 'authentication_failed' with detail 'Invalid token'"
+        in result.output
+    )
+
+
+def test_cli_delete_unknown_event_type(cli_runner, valid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event-type",
+            "delete",
+            "foo",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert "Error: Event type foo does not exist" in result.output
+
+
+def test_cli_delete_event_type(
+    cli_runner, valid_svix_credentials_options, swh_webhooks
+):
+    event_type = EventType(
+        name="origin.create",
+        description="origin creation",
+        schema={"type": "object"},
+    )
+    swh_webhooks.event_type_create(event_type)
+
+    assert swh_webhooks.event_type_get("origin.create")
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event-type",
+            "delete",
+            "origin.create",
+        ],
+    )
+    assert result.exit_code == 0
+
+    with pytest.raises(ValueError, match="Event type origin.create is archived"):
+        swh_webhooks.event_type_get("origin.create")
