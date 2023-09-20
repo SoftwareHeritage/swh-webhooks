@@ -8,8 +8,8 @@ import textwrap
 
 import pytest
 
-from swh.webhooks import EventType, Webhooks
 from swh.webhooks.cli import webhooks_cli_group as cli
+from swh.webhooks.interface import EventType, Webhooks
 
 
 @pytest.fixture

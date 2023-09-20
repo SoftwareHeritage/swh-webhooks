@@ -51,7 +51,7 @@ def webhooks_cli_group(ctx, config_file, svix_url, svix_token):
 
     ctx.ensure_object(dict)
     try:
-        from swh.webhooks import Webhooks
+        from swh.webhooks.interface import Webhooks
 
         webhooks = Webhooks(config_file, svix_url, svix_token)
     except Exception as e:
@@ -84,7 +84,7 @@ def event_type_add(ctx, name, description, schema_file):
 
     SCHEMA_FILE is a path to a JSON schema file describing event payload.
     """
-    from swh.webhooks import EventType
+    from swh.webhooks.interface import EventType
 
     try:
         ctx.obj["webhooks"].event_type_create(
