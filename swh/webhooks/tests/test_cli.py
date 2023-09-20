@@ -255,3 +255,90 @@ def test_cli_delete_event_type(
 
     with pytest.raises(ValueError, match="Event type origin.create is archived"):
         swh_webhooks.event_type_get("origin.create")
+
+
+def test_cli_create_endpoint_auth_error(cli_runner, invalid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        invalid_svix_credentials_options
+        + [
+            "endpoint",
+            "create",
+            "origin.create",
+            "https://example.org/webhook",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Svix server returned error 'authentication_failed' with detail 'Invalid token'"
+        in result.output
+    )
+
+
+def test_cli_create_endpoint_unknown_event_type(
+    cli_runner, valid_svix_credentials_options
+):
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "endpoint",
+            "create",
+            "origin.create",
+            "https://example.org/webhook",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert "Error: Event type origin.create does not exist" in result.output
+
+
+@pytest.mark.parametrize("with_channel", [False, True])
+def test_cli_create_endpoint(
+    cli_runner, valid_svix_credentials_options, swh_webhooks, with_channel
+):
+    event_type_name = "origin.create"
+    url = "https://example.org/webhook"
+    channel = "foo" if with_channel else None
+
+    event_type = EventType(
+        name=event_type_name,
+        description="origin creation",
+        schema={"type": "object"},
+    )
+    swh_webhooks.event_type_create(event_type)
+
+    cmd = [
+        "endpoint",
+        "create",
+        event_type_name,
+        url,
+    ]
+    if with_channel:
+        cmd += [
+            "--channel",
+            channel,
+        ]
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options + cmd,
+    )
+    assert result.exit_code == 0
+
+    endpoints = list(
+        swh_webhooks.endpoints_list(event_type_name=event_type_name, channel=channel)
+    )
+
+    assert endpoints
+    assert endpoints[0].event_type_name == event_type_name
+    assert endpoints[0].url == url
+    assert endpoints[0].channel == channel
+
+    # check same command call does not terminate with error
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options + cmd,
+    )
+    assert result.exit_code == 0

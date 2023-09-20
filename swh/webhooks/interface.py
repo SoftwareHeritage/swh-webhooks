@@ -339,6 +339,8 @@ class Webhooks:
     def endpoint_create(self, endpoint: Endpoint) -> None:
         """Create an endpoint to receive webhook messages.
 
+        That operation is idempotent.
+
         Args:
             endpoint: the endpoint to create
 
@@ -373,8 +375,9 @@ class Webhooks:
                 ),
             )
         except HttpError as http_error:
-            if http_error.to_dict()["code"] != "conflict":
-                raise
+            error_dict = http_error.to_dict()
+            if error_dict["code"] != "conflict":
+                raise SvixHttpError(error_dict)
 
         # Add SWH event type name in webhook POST request headers
         self.svix_api.endpoint.update_headers(

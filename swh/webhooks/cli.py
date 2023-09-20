@@ -140,3 +140,40 @@ def event_type_delete(ctx, name):
         ctx.obj["webhooks"].event_type_delete(name)
     except Exception as e:
         ctx.fail(str(e))
+
+
+@webhooks_cli_group.group("endpoint")
+def endpoint():
+    pass
+
+
+@endpoint.command("create")
+@click.argument("event-type-name", nargs=1, required=True)
+@click.argument("url", nargs=1, required=True)
+@click.option(
+    "--channel",
+    "-c",
+    default=None,
+    help=(
+        "Optional channel the endpoint listens to. Channels are an extra "
+        "dimension of filtering messages that is orthogonal to event types"
+    ),
+)
+@click.pass_context
+def endpoint_create(ctx, event_type_name, url, channel):
+    """Create an endpoint to receive webhook messages of a specific event type.
+
+    That operation is idempotent.
+
+    EVENT_TYPE_NAME must be a string in the form '<group>.<event>'.
+
+    URL corresponds to the endpoint receiving webhook messages.
+    """
+    from swh.webhooks.interface import Endpoint
+
+    try:
+        ctx.obj["webhooks"].endpoint_create(
+            Endpoint(url=url, event_type_name=event_type_name, channel=channel)
+        )
+    except Exception as e:
+        ctx.fail(str(e))
