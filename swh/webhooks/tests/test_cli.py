@@ -9,7 +9,7 @@ import textwrap
 import pytest
 
 from swh.webhooks.cli import webhooks_cli_group as cli
-from swh.webhooks.interface import EventType, Webhooks
+from swh.webhooks.interface import Endpoint, EventType, Webhooks
 
 
 @pytest.fixture
@@ -342,3 +342,148 @@ def test_cli_create_endpoint(
         valid_svix_credentials_options + cmd,
     )
     assert result.exit_code == 0
+
+
+def test_cli_list_endpoints_auth_error(cli_runner, invalid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        invalid_svix_credentials_options
+        + [
+            "endpoint",
+            "list",
+            "origin.create",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Svix server returned error 'authentication_failed' with detail 'Invalid token'"
+        in result.output
+    )
+
+
+def test_cli_list_endpoints_unknown_event_type(
+    cli_runner, valid_svix_credentials_options
+):
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "endpoint",
+            "list",
+            "foo",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert "Error: Event type foo does not exist" in result.output
+
+
+@pytest.mark.parametrize("limit", [None, 5, 10, 15])
+def test_cli_list_endpoints(
+    cli_runner, valid_svix_credentials_options, swh_webhooks, limit
+):
+    event_type_name = "origin.create"
+    event_type = EventType(
+        name=event_type_name,
+        description="origin creation",
+        schema={"type": "object"},
+    )
+    swh_webhooks.event_type_create(event_type)
+
+    endpoint_urls = []
+    for i in range(10):
+        endpoint_url = f"https://example.org/webhook/{i}"
+        swh_webhooks.endpoint_create(
+            Endpoint(url=endpoint_url, event_type_name=event_type_name)
+        )
+        endpoint_urls.append(endpoint_url)
+
+    cmd = [
+        "endpoint",
+        "list",
+        event_type_name,
+    ]
+    if limit:
+        cmd += [
+            "--limit",
+            limit,
+        ]
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options + cmd,
+    )
+    assert result.exit_code == 0
+
+    assert "\n".join(list(reversed(endpoint_urls))[:limit]) in result.output
+
+    cmd.append("--ascending-order")
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options + cmd,
+    )
+    assert result.exit_code == 0
+
+    assert "\n".join(endpoint_urls[:limit]) in result.output
+
+
+def test_cli_list_endpoints_with_channels(
+    cli_runner, valid_svix_credentials_options, swh_webhooks
+):
+    event_type_name = "origin.create"
+    event_type = EventType(
+        name=event_type_name,
+        description="origin creation",
+        schema={"type": "object"},
+    )
+    swh_webhooks.event_type_create(event_type)
+
+    endpoint_foo_channel_urls = []
+    endpoint_bar_channel_urls = []
+    for i in range(10):
+        endpoint_foo_url = f"https://example.org/webhook/foo/{i}"
+        endpoint_bar_url = f"https://example.org/webhook/bar/{i}"
+        swh_webhooks.endpoint_create(
+            Endpoint(
+                url=endpoint_foo_url, event_type_name=event_type_name, channel="foo"
+            )
+        )
+        swh_webhooks.endpoint_create(
+            Endpoint(
+                url=endpoint_bar_url, event_type_name=event_type_name, channel="bar"
+            )
+        )
+        endpoint_foo_channel_urls.append(endpoint_foo_url)
+        endpoint_bar_channel_urls.append(endpoint_bar_url)
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "endpoint",
+            "list",
+            event_type_name,
+            "--channel",
+            "foo",
+        ],
+    )
+    assert result.exit_code == 0
+
+    assert "\n".join(list(reversed(endpoint_foo_channel_urls))) == result.output[:-1]
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "endpoint",
+            "list",
+            event_type_name,
+            "--channel",
+            "bar",
+        ],
+    )
+    assert result.exit_code == 0
+
+    assert "\n".join(list(reversed(endpoint_bar_channel_urls))) == result.output[:-1]

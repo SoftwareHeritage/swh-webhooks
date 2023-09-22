@@ -411,6 +411,7 @@ class Webhooks:
             svix.exceptions.HTTPError: if a request to the Svix REST API fails
 
         """
+        # check event type exists
         self.event_type_get(event_type_name)
         _, app_uid = _get_app_name_and_uid(event_type_name)
 

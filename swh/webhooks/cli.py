@@ -177,3 +177,46 @@ def endpoint_create(ctx, event_type_name, url, channel):
         )
     except Exception as e:
         ctx.fail(str(e))
+
+
+@endpoint.command("list")
+@click.argument("event-type-name", nargs=1, required=True)
+@click.option(
+    "--ascending-order",
+    "-a",
+    is_flag=True,
+    help=("List endpoints in the same order they were created"),
+)
+@click.option(
+    "--limit",
+    "-l",
+    default=None,
+    type=click.IntRange(min=1),
+    help=("Maximum number of endpoints to list"),
+)
+@click.option(
+    "--channel",
+    "-c",
+    default=None,
+    help=(
+        "List endpoints that will receive messages sent to the given channel. "
+        "This includes endpoints not tied to any specific channel"
+    ),
+)
+@click.pass_context
+def endpoint_list(ctx, event_type_name, ascending_order, limit, channel):
+    """List endpoint URLs for a specific event type.
+
+    EVENT_TYPE_NAME must be a string in the form '<group>.<event>'.
+    """
+    try:
+        for endpoint in ctx.obj["webhooks"].endpoints_list(
+            event_type_name=event_type_name,
+            channel=channel,
+            ascending_order=ascending_order,
+            limit=limit,
+        ):
+            click.echo(endpoint.url)
+
+    except Exception as e:
+        ctx.fail(str(e))
