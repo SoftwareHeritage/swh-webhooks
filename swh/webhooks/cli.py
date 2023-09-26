@@ -251,3 +251,46 @@ def endpoint_delete(ctx, event_type_name, url, channel):
         )
     except Exception as e:
         ctx.fail(str(e))
+
+
+@webhooks_cli_group.group("event")
+def event():
+    pass
+
+
+@event.command("send")
+@click.argument("event-type-name", nargs=1, required=True)
+@click.argument("payload-file", nargs=1, required=True, type=click.File("r"))
+@click.option(
+    "--channel",
+    "-c",
+    default=None,
+    help=(
+        "Optional channel endpoints might listen to. When endpoints are subscribed "
+        "to a specific channel, they only receive messages for events addressed "
+        "to this channel."
+    ),
+)
+@click.pass_context
+def event_send(ctx, event_type_name, payload_file, channel):
+    """Send an event to endpoints listening a specific event type.
+
+    EVENT_TYPE_NAME must be a string in the form '<group>.<event>'.
+
+    PAYLOAD_FILE must be a path to a JSON file containing message payload
+    or - if the payload should be read from standard input.
+    """
+
+    from jsonschema.exceptions import ValidationError
+
+    try:
+        ctx.obj["webhooks"].event_send(
+            event_type_name=event_type_name,
+            payload=json.load(payload_file),
+            channel=channel,
+        )
+    except ValidationError as ve:
+        error_message = "Payload validation against JSON schema failed\n\n" + str(ve)
+        ctx.fail(error_message)
+    except Exception as e:
+        ctx.fail(str(e))

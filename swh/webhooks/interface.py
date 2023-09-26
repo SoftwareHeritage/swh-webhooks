@@ -528,20 +528,26 @@ class Webhooks:
                 event schema
             svix.exceptions.HTTPError: if a request to the Svix REST API fails
         """
+        # check event type exists
         event_type = self.event_type_get(event_type_name)
 
         jsonschema.validate(payload, event_type.schema)
 
         _, app_uid = _get_app_name_and_uid(event_type_name)
-        message_out = self.svix_api.message.create(
-            app_uid,
-            MessageIn(
-                event_type=event_type_name,
-                payload=payload,
-                channels=[_gen_uuid(channel)] if channel else None,
-                payload_retention_period=self.config.get("event_retention_period", 90),
-            ),
-        )
+        try:
+            message_out = self.svix_api.message.create(
+                app_uid,
+                MessageIn(
+                    event_type=event_type_name,
+                    payload=payload,
+                    channels=[_gen_uuid(channel)] if channel else None,
+                    payload_retention_period=self.config.get(
+                        "event_retention_period", 90
+                    ),
+                ),
+            )
+        except HttpError as http_error:
+            raise SvixHttpError(http_error.to_dict())
 
         return message_out.id, message_out.timestamp
 

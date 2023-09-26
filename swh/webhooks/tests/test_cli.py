@@ -4,7 +4,9 @@
 # See top-level LICENSE file for more information
 
 
+import json
 import os
+from pathlib import Path
 import textwrap
 
 import pytest
@@ -592,3 +594,149 @@ def test_cli_delete_endpoint(cli_runner, valid_svix_credentials_options, swh_web
     assert result.exit_code == 0
 
     assert list(swh_webhooks.endpoints_list(event_type_name=event_type_name)) == []
+
+
+def test_cli_send_event_auth_error(cli_runner, invalid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        invalid_svix_credentials_options
+        + [
+            "event",
+            "send",
+            "origin.create",
+            "-",
+        ],
+        input="{}",
+    )
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Svix server returned error 'authentication_failed' with detail 'Invalid token'"
+        in result.output
+    )
+
+
+def test_cli_send_event_unknown_event_type(cli_runner, valid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event",
+            "send",
+            "origin.create",
+            "-",
+        ],
+        input="{}",
+    )
+    assert result.exit_code != 0
+
+    assert "Error: Event type origin.create does not exist" in result.output
+
+
+def test_cli_send_event_missing_payload_file(
+    cli_runner, valid_svix_credentials_options, swh_webhooks
+):
+    event_type = EventType(
+        name="origin.create",
+        description="origin creation",
+        schema={"type": "object"},
+    )
+    swh_webhooks.event_type_create(event_type)
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event",
+            "send",
+            event_type.name,
+            "payload.json",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Invalid value for 'PAYLOAD_FILE': 'payload.json': No such file or directory"
+        in result.output
+    )
+
+
+def test_cli_send_event_invalid_schema_for_payload(
+    cli_runner, valid_svix_credentials_options, swh_webhooks, datadir
+):
+    event_type = EventType(
+        name="origin.create",
+        description="origin creation",
+        schema=json.loads(Path(datadir, "origin_create.json").read_text()),
+    )
+    swh_webhooks.event_type_create(event_type)
+
+    payload = {"foo": "bar"}
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event",
+            "send",
+            event_type.name,
+            "-",
+        ],
+        input=json.dumps(payload),
+    )
+
+    assert result.exit_code != 0
+
+    assert "Error: Payload validation against JSON schema failed" in result.output
+    assert "'origin_url' is a required property" in result.output
+
+
+def test_cli_send_event(
+    cli_runner,
+    valid_svix_credentials_options,
+    swh_webhooks,
+    datadir,
+    tmp_path,
+    httpserver,
+):
+    event_type = EventType(
+        name="origin.create",
+        description="origin creation",
+        schema=json.loads(Path(datadir, "origin_create.json").read_text()),
+    )
+    swh_webhooks.event_type_create(event_type)
+
+    endpoint_path = "/swh_webhook"
+    endpoint = Endpoint(
+        event_type_name=event_type.name,
+        url=httpserver.url_for(endpoint_path),
+    )
+    swh_webhooks.endpoint_create(endpoint)
+
+    payload = {"origin_url": "https://git.example.org/user/project"}
+    payload_file_path = os.path.join(tmp_path, "payload.json")
+    with open(payload_file_path, "w") as json_file:
+        json.dump(payload, json_file)
+
+    httpserver.expect_oneshot_request(
+        endpoint_path,
+        method="POST",
+        json=payload,
+    ).respond_with_data("OK")
+
+    with httpserver.wait() as waiting:
+        result = cli_runner.invoke(
+            cli,
+            valid_svix_credentials_options
+            + [
+                "event",
+                "send",
+                event_type.name,
+                payload_file_path,
+            ],
+        )
+
+    assert waiting.result
+    httpserver.check()
+
+    assert result.exit_code == 0
