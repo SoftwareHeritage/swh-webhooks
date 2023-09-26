@@ -220,3 +220,34 @@ def endpoint_list(ctx, event_type_name, ascending_order, limit, channel):
 
     except Exception as e:
         ctx.fail(str(e))
+
+
+@endpoint.command("delete")
+@click.argument("event-type-name", nargs=1, required=True)
+@click.argument("url", nargs=1, required=True)
+@click.option(
+    "--channel",
+    "-c",
+    default=None,
+    help=(
+        "Optional channel the endpoint listens to. When endpoints are subscribed "
+        "to a specific channel, they only receive messages for events addressed "
+        "to this channel."
+    ),
+)
+@click.pass_context
+def endpoint_delete(ctx, event_type_name, url, channel):
+    """Delete an endpoint receiving webhook messages of a specific event type.
+
+    EVENT_TYPE_NAME must be a string in the form '<group>.<event>'.
+
+    URL corresponds to the endpoint receiving webhook messages.
+    """
+    from swh.webhooks.interface import Endpoint
+
+    try:
+        ctx.obj["webhooks"].endpoint_delete(
+            Endpoint(url=url, event_type_name=event_type_name, channel=channel)
+        )
+    except Exception as e:
+        ctx.fail(str(e))

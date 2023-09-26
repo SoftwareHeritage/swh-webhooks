@@ -8,7 +8,6 @@ from itertools import chain
 import json
 from pathlib import Path
 import random
-import re
 import shutil
 import time
 
@@ -288,14 +287,16 @@ def test_get_endpoint_not_found(swh_webhooks, origin_create_event_type):
         url="https://example.com/webhook",
         event_type_name=origin_create_event_type.name,
     )
-    with pytest.raises(
-        ValueError, match=re.escape(f"{unknown_endpoint} does not exist")
-    ):
+
+    error_message = (
+        f"Endpoint with url {unknown_endpoint.url} for event type "
+        f"{unknown_endpoint.event_type_name} does not exist"
+    )
+
+    with pytest.raises(ValueError, match=error_message):
         swh_webhooks.endpoint_get_secret(unknown_endpoint)
 
-    with pytest.raises(
-        ValueError, match=re.escape(f"{unknown_endpoint} does not exist")
-    ):
+    with pytest.raises(ValueError, match=error_message):
         swh_webhooks.endpoint_delete(unknown_endpoint)
 
 

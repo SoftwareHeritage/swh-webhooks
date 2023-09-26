@@ -449,6 +449,13 @@ class Webhooks:
                     if limit and nb_listed_endpoints == limit:
                         break
 
+    def _raise_endpoint_not_found(self, endpoint: Endpoint):
+        error_message = f"Endpoint with url {endpoint.url} "
+        if endpoint.channel:
+            error_message += f"and channel {endpoint.channel} "
+        error_message += f"for event type {endpoint.event_type_name} does not exist"
+        raise ValueError(error_message)
+
     def endpoint_get_secret(self, endpoint: Endpoint) -> str:
         """Get secret for given endpoint to verify webhook signatures.
 
@@ -467,10 +474,11 @@ class Webhooks:
         try:
             secret_out = self.svix_api.endpoint.get_secret(app_uid, endpoint_uid)
         except HttpError as http_error:
-            if http_error.to_dict()["code"] == "not_found":
-                raise ValueError(f"{endpoint} does not exist")
+            error_dict = http_error.to_dict()
+            if error_dict["code"] == "not_found":
+                self._raise_endpoint_not_found(endpoint)
             else:
-                raise
+                raise SvixHttpError(error_dict)
         return secret_out.key
 
     def endpoint_delete(self, endpoint: Endpoint) -> None:
@@ -483,13 +491,17 @@ class Webhooks:
             ValueError: if the endpoint does not exist
             svix.exceptions.HTTPError: if a request to the Svix REST API fails
         """
+        # check event type exists
         self.event_type_get(endpoint.event_type_name)
         _, app_uid = _get_app_name_and_uid(endpoint.event_type_name)
         try:
             self.svix_api.endpoint.delete(app_uid, endpoint.uid)
         except HttpError as http_error:
-            if http_error.to_dict()["code"] == "not_found":
-                raise ValueError(f"{endpoint} does not exist")
+            error_dict = http_error.to_dict()
+            if error_dict["code"] == "not_found":
+                self._raise_endpoint_not_found(endpoint)
+            else:
+                raise SvixHttpError(error_dict)
 
     def event_send(
         self,

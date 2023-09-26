@@ -3,6 +3,7 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
+
 import os
 import textwrap
 
@@ -487,3 +488,107 @@ def test_cli_list_endpoints_with_channels(
     assert result.exit_code == 0
 
     assert "\n".join(list(reversed(endpoint_bar_channel_urls))) == result.output[:-1]
+
+
+def test_cli_delete_endpoint_auth_error(cli_runner, invalid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        invalid_svix_credentials_options
+        + [
+            "endpoint",
+            "delete",
+            "origin.create",
+            "https://example.org/webhook",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Svix server returned error 'authentication_failed' with detail 'Invalid token'"
+        in result.output
+    )
+
+
+def test_cli_delete_endpoint_unkown_event_type(
+    cli_runner, valid_svix_credentials_options
+):
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "endpoint",
+            "delete",
+            "origin.create",
+            "https://example.org/webhook",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert "Error: Event type origin.create does not exist" in result.output
+
+
+@pytest.mark.parametrize("with_channel", [False, True])
+def test_cli_delete_endpoint_unkown_endpoint(
+    cli_runner, valid_svix_credentials_options, swh_webhooks, with_channel
+):
+    endpoint_url = "https://example.org/webhook"
+    channel = "foo"
+    event_type_name = "origin.create"
+    event_type = EventType(
+        name=event_type_name,
+        description="origin creation",
+        schema={"type": "object"},
+    )
+    swh_webhooks.event_type_create(event_type)
+
+    cmd = [
+        "endpoint",
+        "delete",
+        event_type_name,
+        endpoint_url,
+    ]
+    error_message = f"Error: Endpoint with url {endpoint_url} "
+    if with_channel:
+        cmd += [
+            "--channel",
+            channel,
+        ]
+        error_message += f"and channel {channel} "
+    error_message += f"for event type {event_type_name} does not exist"
+
+    result = cli_runner.invoke(cli, valid_svix_credentials_options + cmd)
+    assert result.exit_code != 0
+
+    assert error_message in result.output
+
+
+def test_cli_delete_endpoint(cli_runner, valid_svix_credentials_options, swh_webhooks):
+    endpoint_url = "https://example.org/webhook"
+    event_type_name = "origin.create"
+    event_type = EventType(
+        name=event_type_name,
+        description="origin creation",
+        schema={"type": "object"},
+    )
+    swh_webhooks.event_type_create(event_type)
+
+    endpoint = Endpoint(url=endpoint_url, event_type_name=event_type_name)
+    swh_webhooks.endpoint_create(endpoint)
+
+    assert list(swh_webhooks.endpoints_list(event_type_name=event_type_name)) == [
+        endpoint
+    ]
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "endpoint",
+            "delete",
+            event_type_name,
+            endpoint_url,
+        ],
+    )
+    assert result.exit_code == 0
+
+    assert list(swh_webhooks.endpoints_list(event_type_name=event_type_name)) == []
