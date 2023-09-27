@@ -5,6 +5,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import partial
 import json
 import os
 import re
@@ -36,8 +37,11 @@ from svix.api import (
     ListResponseEndpointOut,
     ListResponseEventTypeOut,
     ListResponseMessageAttemptOut,
+    ListResponseMessageOut,
     MessageAttemptListOptions,
+    MessageAttemptOut,
     MessageIn,
+    MessageListOptions,
     Ordering,
     Svix,
     SvixOptions,
@@ -551,7 +555,7 @@ class Webhooks:
 
         return message_out.id, message_out.timestamp
 
-    def sent_events_list(
+    def sent_events_list_for_endpoint(
         self,
         endpoint: Endpoint,
         before: Optional[datetime] = None,
@@ -571,11 +575,6 @@ class Webhooks:
             ValueError: if the endpoint does not exist
             svix.exceptions.HTTPError: if a request to the Svix REST API fails
         """
-
-        endpoint_secret = self.endpoint_get_secret(endpoint)
-
-        webhook = Webhook(endpoint_secret)
-
         _, app_uid = _get_app_name_and_uid(endpoint.event_type_name)
         endpoint_uid = endpoint.uid
 
@@ -616,27 +615,109 @@ class Webhooks:
         for attempt in svix_list(list_attempted_messages_by_endpoint):
             payload = message_data.get(attempt.msg_id, {}).get("payload", {})
             assert isinstance(payload, dict)
-            channels = message_data.get(attempt.msg_id, {}).get("channels")
-            json_payload = json.dumps(payload, separators=(",", ":"))
-            yield SentEvent(
-                event_type_name=endpoint.event_type_name,
-                channel=endpoint.channel if isinstance(channels, list) else None,
-                endpoint_url=attempt.url,
-                headers={
-                    "Content-Length": str(len(json_payload)),
-                    "Content-Type": "application/json",
-                    "Webhook-Id": attempt.msg_id,
-                    "Webhook-Timestamp": str(int(attempt.timestamp.timestamp())),
-                    "Webhook-Signature": webhook.sign(
-                        attempt.msg_id,
-                        attempt.timestamp,
-                        json_payload,
-                    ),
-                    "X-Swh-Event": endpoint.event_type_name,
-                },
-                msg_id=attempt.msg_id,
-                payload=payload if payload is not None else {},
-                timestamp=attempt.timestamp,
-                response=attempt.response,
-                response_status_code=attempt.response_status_code,
+            yield self._sent_event(endpoint, payload, attempt)
+
+    def sent_events_list_for_event_type(
+        self,
+        event_type_name: str,
+        channel: Optional[str] = None,
+        before: Optional[datetime] = None,
+        after: Optional[datetime] = None,
+    ) -> Iterator[SentEvent]:
+        """List recent events sent for a specific event type.
+
+        Args:
+            event_type_name: the name of the event type to list message attempts
+            channel: optional channel name, channels are case-sensitive,
+                and endpoints that are filtering for a specific channel will only
+                get messages sent to that specific channel.
+            before: list sent events before that date if provided
+            after: list sent events after that date if provided
+
+        Returns:
+            list of sent events
+
+        Raises:
+            ValueError: if the endpoint does not exist
+            svix.exceptions.HTTPError: if a request to the Svix REST API fails
+        """
+
+        _, app_uid = _get_app_name_and_uid(event_type_name)
+
+        def list_messages(
+            iterator: SvixListIterator,
+        ) -> ListResponseMessageOut:
+            return self.svix_api.message.list(
+                app_uid,
+                MessageListOptions(
+                    iterator=iterator,
+                    event_types=[event_type_name],
+                    channel=_gen_uuid(channel) if channel else None,
+                    before=before,
+                    after=after,
+                ),
             )
+
+        def list_attempts_by_message(
+            iterator: SvixListIterator, msg_id: str
+        ) -> ListResponseMessageAttemptOut:
+            return self.svix_api.message_attempt.list_by_msg(
+                app_uid,
+                msg_id,
+                MessageAttemptListOptions(
+                    iterator=iterator, before=before, after=after
+                ),
+            )
+
+        endpoints: Dict[str, Endpoint] = {}
+
+        for message in svix_list(list_messages):
+            for attempt in svix_list(
+                partial(list_attempts_by_message, msg_id=message.id)
+            ):
+                payload = message.payload if message.payload is not None else {}
+                channel = message.channels[0] if message.channels else None
+                endpoint = endpoints.get(attempt.endpoint_id)
+                if endpoint is None:
+                    endpoint_data = self.svix_api.endpoint.get(
+                        app_uid, attempt.endpoint_id
+                    )
+                    endpoint = Endpoint(
+                        event_type_name=event_type_name,
+                        url=attempt.url,
+                        channel=(
+                            endpoint_data.metadata.get(channel) if channel else None
+                        ),
+                    )
+                    endpoints[attempt.endpoint_id] = endpoint
+
+                yield self._sent_event(endpoint, payload, attempt)
+
+    def _sent_event(
+        self, endpoint: Endpoint, payload: Dict[str, Any], attempt: MessageAttemptOut
+    ) -> SentEvent:
+        endpoint_secret = self.endpoint_get_secret(endpoint)
+        webhook = Webhook(endpoint_secret)
+        json_payload = json.dumps(payload, separators=(",", ":"))
+        return SentEvent(
+            event_type_name=endpoint.event_type_name,
+            channel=endpoint.channel,
+            endpoint_url=attempt.url,
+            headers={
+                "Content-Length": str(len(json_payload)),
+                "Content-Type": "application/json",
+                "Webhook-Id": attempt.msg_id,
+                "Webhook-Timestamp": str(int(attempt.timestamp.timestamp())),
+                "Webhook-Signature": webhook.sign(
+                    attempt.msg_id,
+                    attempt.timestamp,
+                    json_payload,
+                ),
+                "X-Swh-Event": endpoint.event_type_name,
+            },
+            msg_id=attempt.msg_id,
+            payload=payload,
+            timestamp=attempt.timestamp,
+            response=attempt.response,
+            response_status_code=attempt.response_status_code,
+        )

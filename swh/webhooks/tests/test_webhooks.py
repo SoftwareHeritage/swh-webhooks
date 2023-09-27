@@ -419,8 +419,9 @@ def test_send_event_without_channels_filtering(
     httpserver.check()
 
     for sent_event in chain(
-        swh_webhooks.sent_events_list(origin_create_endpoint1_no_channel),
-        swh_webhooks.sent_events_list(origin_create_endpoint2_no_channel),
+        swh_webhooks.sent_events_list_for_endpoint(origin_create_endpoint1_no_channel),
+        swh_webhooks.sent_events_list_for_endpoint(origin_create_endpoint2_no_channel),
+        swh_webhooks.sent_events_list_for_event_type(origin_create_event_type.name),
     ):
         assert sent_event.event_type_name == origin_create_event_type.name
         assert sent_event.channel is None
@@ -537,9 +538,10 @@ def test_send_event_with_channels_filtering(
     httpserver.check()
 
     for sent_event in chain(
-        swh_webhooks.sent_events_list(origin_visit_endpoint1_channel1),
-        swh_webhooks.sent_events_list(origin_visit_endpoint2_channel2),
-        swh_webhooks.sent_events_list(origin_visit_endpoint3_no_channel),
+        swh_webhooks.sent_events_list_for_endpoint(origin_visit_endpoint1_channel1),
+        swh_webhooks.sent_events_list_for_endpoint(origin_visit_endpoint2_channel2),
+        swh_webhooks.sent_events_list_for_endpoint(origin_visit_endpoint3_no_channel),
+        swh_webhooks.sent_events_list_for_event_type(origin_visit_event_type.name),
     ):
         assert sent_event.event_type_name == origin_visit_event_type.name
         assert sent_event.channel in (FIRST_GIT_ORIGIN_URL, SECOND_GIT_ORIGIN_URL, None)
@@ -555,6 +557,27 @@ def test_send_event_with_channels_filtering(
         assert (
             set(sent_event.headers.items()) - set(request_headers[key].items()) == set()
         )
+
+    assert {
+        event.channel
+        for event in swh_webhooks.sent_events_list_for_event_type(
+            origin_visit_event_type.name
+        )
+    } == {None, FIRST_GIT_ORIGIN_URL, SECOND_GIT_ORIGIN_URL}
+
+    assert {
+        event.channel
+        for event in swh_webhooks.sent_events_list_for_event_type(
+            origin_visit_event_type.name, channel=FIRST_GIT_ORIGIN_URL
+        )
+    } == {None, FIRST_GIT_ORIGIN_URL}
+
+    assert {
+        event.channel
+        for event in swh_webhooks.sent_events_list_for_event_type(
+            origin_visit_event_type.name, channel=SECOND_GIT_ORIGIN_URL
+        )
+    } == {None, SECOND_GIT_ORIGIN_URL}
 
 
 def test_list_sent_events_date_filtering(
@@ -594,11 +617,32 @@ def test_list_sent_events_date_filtering(
         )
 
     sent_events_before = list(
-        swh_webhooks.sent_events_list(origin_create_endpoint1_no_channel, before=date)
+        swh_webhooks.sent_events_list_for_endpoint(
+            origin_create_endpoint1_no_channel, before=date
+        )
     )
 
     sent_events_after = list(
-        swh_webhooks.sent_events_list(origin_create_endpoint1_no_channel, after=date)
+        swh_webhooks.sent_events_list_for_endpoint(
+            origin_create_endpoint1_no_channel, after=date
+        )
+    )
+
+    assert len(sent_events_before) == 1
+    assert len(sent_events_after) == 1
+
+    assert sent_events_before != sent_events_after
+
+    sent_events_before = list(
+        swh_webhooks.sent_events_list_for_event_type(
+            origin_create_event_type.name, before=date
+        )
+    )
+
+    sent_events_after = list(
+        swh_webhooks.sent_events_list_for_event_type(
+            origin_create_event_type.name, after=date
+        )
     )
 
     assert len(sent_events_before) == 1
