@@ -649,3 +649,52 @@ def test_list_sent_events_date_filtering(
     assert len(sent_events_after) == 1
 
     assert sent_events_before != sent_events_after
+
+
+@pytest.mark.parametrize("limit", [1, 5, 10])
+def test_list_sent_events_with_limit(
+    swh_webhooks,
+    origin_create_event_type,
+    origin_create_endpoint1_no_channel,
+    httpserver,
+    limit,
+):
+    swh_webhooks.event_type_create(origin_create_event_type)
+    swh_webhooks.endpoint_create(origin_create_endpoint1_no_channel)
+
+    nb_origins = 100
+
+    for i in range(nb_origins):
+        httpserver.expect_oneshot_request(
+            WEBHOOK_FIRST_ENDPOINT_PATH,
+            method="POST",
+        ).respond_with_data("OK")
+
+    with httpserver.wait() as waiting:
+        for i in range(nb_origins):
+            payload = origin_create_payload(f"https://git.example.org/project{i}")
+            swh_webhooks.event_send(origin_create_event_type.name, payload)
+
+    assert waiting.result
+
+    assert (
+        len(
+            list(
+                swh_webhooks.sent_events_list_for_endpoint(
+                    origin_create_endpoint1_no_channel, limit=limit
+                )
+            )
+        )
+        == limit
+    )
+
+    assert (
+        len(
+            list(
+                swh_webhooks.sent_events_list_for_event_type(
+                    origin_create_event_type.name, limit=limit
+                )
+            )
+        )
+        == limit
+    )

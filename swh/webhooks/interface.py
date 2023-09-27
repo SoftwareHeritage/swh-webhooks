@@ -6,6 +6,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial
+from itertools import islice
 import json
 import os
 import re
@@ -560,6 +561,7 @@ class Webhooks:
         endpoint: Endpoint,
         before: Optional[datetime] = None,
         after: Optional[datetime] = None,
+        limit: Optional[int] = None,
     ) -> Iterator[SentEvent]:
         """List recent events sent to an endpoint.
 
@@ -612,7 +614,7 @@ class Webhooks:
                 ),
             )
 
-        for attempt in svix_list(list_attempted_messages_by_endpoint):
+        for attempt in islice(svix_list(list_attempted_messages_by_endpoint), limit):
             payload = message_data.get(attempt.msg_id, {}).get("payload", {})
             assert isinstance(payload, dict)
             yield self._sent_event(endpoint, payload, attempt)
@@ -623,6 +625,7 @@ class Webhooks:
         channel: Optional[str] = None,
         before: Optional[datetime] = None,
         after: Optional[datetime] = None,
+        limit: Optional[int] = None,
     ) -> Iterator[SentEvent]:
         """List recent events sent for a specific event type.
 
@@ -669,29 +672,28 @@ class Webhooks:
                 ),
             )
 
+        def iter_attempts():
+            for message in svix_list(list_messages):
+                for attempt in svix_list(
+                    partial(list_attempts_by_message, msg_id=message.id)
+                ):
+                    yield message, attempt
+
         endpoints: Dict[str, Endpoint] = {}
+        for message, attempt in islice(iter_attempts(), limit):
+            payload = message.payload if message.payload is not None else {}
+            channel = message.channels[0] if message.channels else None
+            endpoint = endpoints.get(attempt.endpoint_id)
+            if endpoint is None:
+                endpoint_data = self.svix_api.endpoint.get(app_uid, attempt.endpoint_id)
+                endpoint = Endpoint(
+                    event_type_name=event_type_name,
+                    url=attempt.url,
+                    channel=(endpoint_data.metadata.get(channel) if channel else None),
+                )
+                endpoints[attempt.endpoint_id] = endpoint
 
-        for message in svix_list(list_messages):
-            for attempt in svix_list(
-                partial(list_attempts_by_message, msg_id=message.id)
-            ):
-                payload = message.payload if message.payload is not None else {}
-                channel = message.channels[0] if message.channels else None
-                endpoint = endpoints.get(attempt.endpoint_id)
-                if endpoint is None:
-                    endpoint_data = self.svix_api.endpoint.get(
-                        app_uid, attempt.endpoint_id
-                    )
-                    endpoint = Endpoint(
-                        event_type_name=event_type_name,
-                        url=attempt.url,
-                        channel=(
-                            endpoint_data.metadata.get(channel) if channel else None
-                        ),
-                    )
-                    endpoints[attempt.endpoint_id] = endpoint
-
-                yield self._sent_event(endpoint, payload, attempt)
+            yield self._sent_event(endpoint, payload, attempt)
 
     def _sent_event(
         self, endpoint: Endpoint, payload: Dict[str, Any], attempt: MessageAttemptOut
