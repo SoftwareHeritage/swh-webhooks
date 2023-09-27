@@ -34,7 +34,6 @@ from svix.api import (
     EventTypeIn,
     EventTypeListOptions,
     EventTypeUpdate,
-    ListResponseEndpointMessageOut,
     ListResponseEndpointOut,
     ListResponseEventTypeOut,
     ListResponseMessageAttemptOut,
@@ -580,29 +579,6 @@ class Webhooks:
         _, app_uid = _get_app_name_and_uid(endpoint.event_type_name)
         endpoint_uid = endpoint.uid
 
-        message_data = {}
-
-        def list_attempted_messages(
-            iterator: SvixListIterator,
-        ) -> ListResponseEndpointMessageOut:
-            return self.svix_api.message_attempt.list_attempted_messages(
-                app_uid,
-                endpoint_uid,
-                MessageAttemptListOptions(
-                    iterator=iterator, before=before, after=after
-                ),
-            )
-
-        message_data.update(
-            {
-                message.id: {
-                    "payload": message.payload,
-                    "channels": message.channels,
-                }
-                for message in svix_list(list_attempted_messages)
-            }
-        )
-
         def list_attempted_messages_by_endpoint(
             iterator: SvixListIterator,
         ) -> ListResponseMessageAttemptOut:
@@ -615,7 +591,8 @@ class Webhooks:
             )
 
         for attempt in islice(svix_list(list_attempted_messages_by_endpoint), limit):
-            payload = message_data.get(attempt.msg_id, {}).get("payload", {})
+            message = self.svix_api.message.get(app_uid, attempt.msg_id)
+            payload = message.payload if message.payload else {}
             assert isinstance(payload, dict)
             yield self._sent_event(endpoint, payload, attempt)
 
