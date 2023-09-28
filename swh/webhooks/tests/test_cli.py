@@ -4,6 +4,7 @@
 # See top-level LICENSE file for more information
 
 
+from collections import defaultdict
 import json
 import os
 from pathlib import Path
@@ -703,3 +704,396 @@ def test_cli_send_event(
     httpserver.check()
 
     assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    "with_endpoint", [False, True], ids=["without endpoint", "with endpoint"]
+)
+def test_cli_list_events_auth_error(
+    cli_runner, invalid_svix_credentials_options, with_endpoint
+):
+    cmd = [
+        "event",
+        "list",
+        "origin.create",
+    ]
+    if with_endpoint:
+        cmd += [
+            "--endpoint-url",
+            "https://example.org/wh",
+        ]
+
+    result = cli_runner.invoke(
+        cli,
+        invalid_svix_credentials_options + cmd,
+    )
+
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Svix server returned error 'authentication_failed' with detail 'Invalid token'"
+        in result.output
+    )
+
+
+@pytest.mark.parametrize(
+    "with_endpoint", [False, True], ids=["without endpoint", "with endpoint"]
+)
+def test_cli_list_events_unknown_event_type(
+    cli_runner, valid_svix_credentials_options, with_endpoint
+):
+    cmd = [
+        "event",
+        "list",
+        "origin.create",
+    ]
+    if with_endpoint:
+        cmd += [
+            "--endpoint-url",
+            "https://example.org/wh",
+        ]
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options + cmd,
+    )
+    assert result.exit_code != 0
+
+    assert "Error: Event type origin.create does not exist" in result.output
+
+
+@pytest.mark.parametrize("limit", [1, 5, 10], ids=lambda li: f"limit={li}")
+def test_cli_list_events_for_event_type(
+    cli_runner,
+    valid_svix_credentials_options,
+    swh_webhooks,
+    httpserver,
+    origin_create_event_type,
+    limit,
+):
+    endpoint_path = "/swh_webhook"
+    endpoint = Endpoint(
+        event_type_name=origin_create_event_type.name,
+        url=httpserver.url_for(endpoint_path),
+    )
+    swh_webhooks.endpoint_create(endpoint)
+
+    payload = {"origin_url": "https://git.example.org/user/project"}
+
+    nb_events = 10
+
+    for _ in range(nb_events):
+        httpserver.expect_oneshot_request(
+            endpoint_path,
+            method="POST",
+            json=payload,
+        ).respond_with_data("OK")
+
+    with httpserver.wait() as waiting:
+        for _ in range(nb_events):
+            swh_webhooks.event_send(origin_create_event_type.name, payload)
+
+    assert waiting.result
+    httpserver.check()
+
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event",
+            "list",
+            "--limit",
+            limit,
+            origin_create_event_type.name,
+        ],
+    )
+
+    assert result.exit_code == 0
+
+    events = json.loads(result.output)
+
+    assert len(events) == limit
+
+
+def test_cli_list_events_for_event_type_with_channel(
+    cli_runner,
+    valid_svix_credentials_options,
+    swh_webhooks,
+    httpserver,
+    origin_create_event_type,
+):
+    origin_url = "https://git.example.org/user/project1"
+    other_origin_url = "https://git.example.org/user/project2"
+
+    # first endpoint with channel set to origin_url
+    first_endpoint_path = "/swh_webhook"
+    first_endpoint_with_origin_channel = Endpoint(
+        event_type_name=origin_create_event_type.name,
+        url=httpserver.url_for(first_endpoint_path),
+        channel=origin_url,
+    )
+    swh_webhooks.endpoint_create(first_endpoint_with_origin_channel)
+
+    # second endpoint with no channel set
+    second_endpoint_path = "/swh_webhook_other"
+    second_endpoint_no_channel = Endpoint(
+        event_type_name=origin_create_event_type.name,
+        url=httpserver.url_for(second_endpoint_path),
+    )
+    swh_webhooks.endpoint_create(second_endpoint_no_channel)
+
+    # third endpoint with channel set to other_origin_url
+    third_endpoint_path = "/swh_webhook_another"
+    third_endpoint_with_other_channel = Endpoint(
+        event_type_name=origin_create_event_type.name,
+        url=httpserver.url_for(third_endpoint_path),
+        channel=other_origin_url,
+    )
+    swh_webhooks.endpoint_create(third_endpoint_with_other_channel)
+
+    payload = {"origin_url": origin_url}
+
+    # first endpoint should receive webhook events
+    httpserver.expect_oneshot_request(
+        first_endpoint_path,
+        method="POST",
+        json=payload,
+    ).respond_with_data("OK")
+    # second endpoint too
+    httpserver.expect_oneshot_request(
+        second_endpoint_path,
+        method="POST",
+        json=payload,
+    ).respond_with_data("OK")
+
+    with httpserver.wait() as waiting:
+        # send webhook event on channel
+        swh_webhooks.event_send(
+            origin_create_event_type.name, payload, channel=origin_url
+        )
+
+    # check expected requests were received
+    assert waiting.result
+    # check no extra requests were sent
+    httpserver.check()
+
+    # list events for event type
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event",
+            "list",
+            "--channel",
+            origin_url,
+            "--limit",
+            3,  # set limit to 3 to check third endpoint did not receive event
+            origin_create_event_type.name,
+        ],
+    )
+
+    assert result.exit_code == 0
+
+    events = json.loads(result.output)
+
+    # events sent to the two first endpoints should be listed
+    assert len(events) == 2
+
+    # check all expected events
+    events_by_channel = defaultdict(list)
+    for event in events:
+        events_by_channel[event["channel"]].append(event)
+    assert set(events_by_channel) == {origin_url, None}
+    assert len(events_by_channel[origin_url]) == len(events_by_channel[None]) == 1
+    assert all(
+        event["endpoint_url"] == first_endpoint_with_origin_channel.url
+        for event in events_by_channel[origin_url]
+    )
+    assert all(
+        event["endpoint_url"] == second_endpoint_no_channel.url
+        for event in events_by_channel[None]
+    )
+
+
+@pytest.mark.parametrize("limit", [1, 5, 10], ids=lambda li: f"limit={li}")
+def test_cli_list_events_for_endpoint(
+    cli_runner,
+    valid_svix_credentials_options,
+    swh_webhooks,
+    httpserver,
+    origin_create_event_type,
+    limit,
+):
+    first_endpoint_path = "/swh_webhook"
+    first_endpoint = Endpoint(
+        event_type_name=origin_create_event_type.name,
+        url=httpserver.url_for(first_endpoint_path),
+    )
+    swh_webhooks.endpoint_create(first_endpoint)
+
+    second_endpoint_path = "/swh_webhook_other"
+    second_endpoint = Endpoint(
+        event_type_name=origin_create_event_type.name,
+        url=httpserver.url_for(second_endpoint_path),
+    )
+    swh_webhooks.endpoint_create(second_endpoint)
+
+    payload = {"origin_url": "https://git.example.org/user/project"}
+
+    nb_events = 10
+
+    for _ in range(nb_events):
+        httpserver.expect_oneshot_request(
+            first_endpoint_path,
+            method="POST",
+            json=payload,
+        ).respond_with_data("OK")
+        httpserver.expect_oneshot_request(
+            second_endpoint_path,
+            method="POST",
+            json=payload,
+        ).respond_with_data("OK")
+
+    with httpserver.wait() as waiting:
+        for _ in range(nb_events):
+            swh_webhooks.event_send(origin_create_event_type.name, payload)
+
+    assert waiting.result
+    httpserver.check()
+
+    for endpoint in (first_endpoint, second_endpoint):
+        result = cli_runner.invoke(
+            cli,
+            valid_svix_credentials_options
+            + [
+                "event",
+                "list",
+                "--endpoint-url",
+                endpoint.url,
+                "--limit",
+                limit,
+                origin_create_event_type.name,
+            ],
+        )
+
+        assert result.exit_code == 0
+
+        events = json.loads(result.output)
+
+        assert len(events) == limit
+        assert all(event["endpoint_url"] == endpoint.url for event in events)
+
+
+def test_cli_list_events_for_endpoint_with_channel(
+    cli_runner,
+    valid_svix_credentials_options,
+    swh_webhooks,
+    httpserver,
+    origin_create_event_type,
+):
+    origin_url = "https://git.example.org/user/project1"
+    other_origin_url = "https://git.example.org/user/project2"
+
+    # first endpoint with channel set to origin_url
+    first_endpoint_path = "/swh_webhook"
+    first_endpoint_with_origin_channel = Endpoint(
+        event_type_name=origin_create_event_type.name,
+        url=httpserver.url_for(first_endpoint_path),
+        channel=origin_url,
+    )
+    swh_webhooks.endpoint_create(first_endpoint_with_origin_channel)
+
+    # second endpoint with no channel set
+    second_endpoint_path = "/swh_webhook_other"
+    second_endpoint_no_channel = Endpoint(
+        event_type_name=origin_create_event_type.name,
+        url=httpserver.url_for(second_endpoint_path),
+    )
+    swh_webhooks.endpoint_create(second_endpoint_no_channel)
+
+    # third endpoint with channel set to other_origin_url
+    third_endpoint_path = "/swh_webhook_another"
+    third_endpoint_with_other_channel = Endpoint(
+        event_type_name=origin_create_event_type.name,
+        url=httpserver.url_for(third_endpoint_path),
+        channel=other_origin_url,
+    )
+    swh_webhooks.endpoint_create(third_endpoint_with_other_channel)
+
+    payload = {"origin_url": origin_url}
+
+    # first endpoint should receive webhook events
+    httpserver.expect_oneshot_request(
+        first_endpoint_path,
+        method="POST",
+        json=payload,
+    ).respond_with_data("OK")
+    # second endpoint too
+    httpserver.expect_oneshot_request(
+        second_endpoint_path,
+        method="POST",
+        json=payload,
+    ).respond_with_data("OK")
+
+    with httpserver.wait() as waiting:
+        # send webhook event on channel
+        swh_webhooks.event_send(
+            origin_create_event_type.name, payload, channel=origin_url
+        )
+
+    # check expected requests were received
+    assert waiting.result
+    # check no extra requests were sent
+    httpserver.check()
+
+    # check first and second endpoints received the expected events
+    for endpoint in (first_endpoint_with_origin_channel, second_endpoint_no_channel):
+        cmd = [
+            "event",
+            "list",
+            origin_create_event_type.name,
+            "--endpoint-url",
+            endpoint.url,
+        ]
+
+        if endpoint.channel:
+            cmd += [
+                "--channel",
+                endpoint.channel,
+            ]
+
+        result = cli_runner.invoke(
+            cli,
+            valid_svix_credentials_options + cmd,
+        )
+
+        assert result.exit_code == 0
+
+        events = json.loads(result.output)
+
+        assert len(events) == 1
+        assert all(event["endpoint_url"] == endpoint.url for event in events)
+        if endpoint.channel:
+            assert all(event["channel"] == endpoint.channel for event in events)
+        else:
+            assert all(event["channel"] is None for event in events)
+
+    # check third endpoint did not receive any events
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event",
+            "list",
+            origin_create_event_type.name,
+            "--endpoint-url",
+            third_endpoint_with_other_channel.url,
+            "--channel",
+            third_endpoint_with_other_channel.channel,
+        ],
+    )
+
+    assert result.exit_code == 0
+
+    events = json.loads(result.output)
+
+    assert len(events) == 0

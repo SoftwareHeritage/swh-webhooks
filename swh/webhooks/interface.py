@@ -576,19 +576,26 @@ class Webhooks:
             ValueError: if the endpoint does not exist
             svix.exceptions.HTTPError: if a request to the Svix REST API fails
         """
+
+        # check event type exists
+        self.event_type_get(endpoint.event_type_name)
+
         _, app_uid = _get_app_name_and_uid(endpoint.event_type_name)
         endpoint_uid = endpoint.uid
 
         def list_attempted_messages_by_endpoint(
             iterator: SvixListIterator,
         ) -> ListResponseMessageAttemptOut:
-            return self.svix_api.message_attempt.list_by_endpoint(
-                app_uid,
-                endpoint_uid,
-                MessageAttemptListOptions(
-                    iterator=iterator, before=before, after=after
-                ),
-            )
+            try:
+                return self.svix_api.message_attempt.list_by_endpoint(
+                    app_uid,
+                    endpoint_uid,
+                    MessageAttemptListOptions(
+                        iterator=iterator, before=before, after=after
+                    ),
+                )
+            except HttpError as e:
+                raise SvixHttpError(e.to_dict())
 
         for attempt in islice(svix_list(list_attempted_messages_by_endpoint), limit):
             message = self.svix_api.message.get(app_uid, attempt.msg_id)
@@ -622,32 +629,41 @@ class Webhooks:
             svix.exceptions.HTTPError: if a request to the Svix REST API fails
         """
 
+        # check event type exists
+        self.event_type_get(event_type_name)
+
         _, app_uid = _get_app_name_and_uid(event_type_name)
 
         def list_messages(
             iterator: SvixListIterator,
         ) -> ListResponseMessageOut:
-            return self.svix_api.message.list(
-                app_uid,
-                MessageListOptions(
-                    iterator=iterator,
-                    event_types=[event_type_name],
-                    channel=_gen_uuid(channel) if channel else None,
-                    before=before,
-                    after=after,
-                ),
-            )
+            try:
+                return self.svix_api.message.list(
+                    app_uid,
+                    MessageListOptions(
+                        iterator=iterator,
+                        event_types=[event_type_name],
+                        channel=_gen_uuid(channel) if channel else None,
+                        before=before,
+                        after=after,
+                    ),
+                )
+            except HttpError as e:
+                raise SvixHttpError(e.to_dict())
 
         def list_attempts_by_message(
             iterator: SvixListIterator, msg_id: str
         ) -> ListResponseMessageAttemptOut:
-            return self.svix_api.message_attempt.list_by_msg(
-                app_uid,
-                msg_id,
-                MessageAttemptListOptions(
-                    iterator=iterator, before=before, after=after
-                ),
-            )
+            try:
+                return self.svix_api.message_attempt.list_by_msg(
+                    app_uid,
+                    msg_id,
+                    MessageAttemptListOptions(
+                        iterator=iterator, before=before, after=after
+                    ),
+                )
+            except HttpError as e:
+                raise SvixHttpError(e.to_dict())
 
         def iter_attempts():
             for message in svix_list(list_messages):

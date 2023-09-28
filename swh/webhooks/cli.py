@@ -3,6 +3,7 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
+import datetime
 import json
 from pathlib import Path
 import textwrap
@@ -292,5 +293,64 @@ def event_send(ctx, event_type_name, payload_file, channel):
     except ValidationError as ve:
         error_message = "Payload validation against JSON schema failed\n\n" + str(ve)
         ctx.fail(error_message)
+    except Exception as e:
+        ctx.fail(str(e))
+
+
+class EventListJSONEncoder(json.JSONEncoder):
+    # Override the default method
+    def default(self, obj):
+        if isinstance(obj, (datetime.date, datetime.datetime)):
+            return obj.isoformat()
+        return json.JSONEncoder.default(self, obj)
+
+
+@event.command("list")
+@click.argument("event-type-name", nargs=1, required=True)
+@click.option(
+    "--endpoint-url",
+    "-u",
+    default=None,
+    help=("List events sent to the given endpoint"),
+)
+@click.option(
+    "--channel",
+    "-c",
+    default=None,
+    help=("List events sent to the given channel"),
+)
+@click.option(
+    "--limit",
+    "-l",
+    default=10,
+    type=click.IntRange(min=1),
+    help=("Maximum number of events to list"),
+)
+@click.pass_context
+def event_list(ctx, event_type_name, endpoint_url, channel, limit):
+    """List recent events sent to endpoints.
+
+    It outputs a JSON list filled with events data.
+
+    EVENT_TYPE_NAME must be a string in the form '<group>.<event>'.
+    """
+    from dataclasses import asdict
+
+    from swh.webhooks.interface import Endpoint
+
+    try:
+        if endpoint_url:
+            sent_events = ctx.obj["webhooks"].sent_events_list_for_endpoint(
+                endpoint=Endpoint(endpoint_url, event_type_name, channel),
+                limit=limit,
+            )
+        else:
+            sent_events = ctx.obj["webhooks"].sent_events_list_for_event_type(
+                event_type_name=event_type_name,
+                channel=channel,
+                limit=limit,
+            )
+        events = [asdict(event) for event in sent_events]
+        click.echo(json.dumps(events, cls=EventListJSONEncoder, indent=4))
     except Exception as e:
         ctx.fail(str(e))
