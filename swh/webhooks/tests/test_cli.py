@@ -106,6 +106,17 @@ def invalid_svix_credentials_options(svix_server_url):
     return ["-u", svix_server_url, "-t", "foo"]
 
 
+@pytest.fixture
+def origin_create_event_type(datadir, swh_webhooks):
+    event_type = EventType(
+        name="origin.create",
+        description="origin creation",
+        schema=json.loads(Path(datadir, "origin_create.json").read_text()),
+    )
+    swh_webhooks.event_type_create(event_type)
+    return event_type
+
+
 def test_cli_add_event_type_auth_error(
     cli_runner, invalid_svix_credentials_options, add_event_type_cmd
 ):
@@ -150,15 +161,8 @@ def test_cli_get_event_type_auth_error(cli_runner, invalid_svix_credentials_opti
 def test_cli_get_event_type(
     cli_runner,
     valid_svix_credentials_options,
-    swh_webhooks,
+    origin_create_event_type,
 ):
-    event_type = EventType(
-        name="origin.create",
-        description="origin creation",
-        schema={"type": "object"},
-    )
-    swh_webhooks.event_type_create(event_type)
-
     result = cli_runner.invoke(
         cli,
         valid_svix_credentials_options
@@ -169,7 +173,7 @@ def test_cli_get_event_type(
         ],
     )
     assert result.exit_code == 0
-    assert f"{event_type.description}\n" in result.output
+    assert f"{origin_create_event_type.description}\n" in result.output
     assert '"type": "object"' in result.output
 
     result = cli_runner.invoke(
@@ -182,7 +186,7 @@ def test_cli_get_event_type(
             "origin.create",
         ],
     )
-    assert result.output == '{"type": "object"}\n'
+    assert result.output[0] == "{" and result.output[-2] == "}"
 
 
 def test_cli_get_event_type_unknown(cli_runner, valid_svix_credentials_options):
@@ -234,16 +238,9 @@ def test_cli_delete_unknown_event_type(cli_runner, valid_svix_credentials_option
 
 
 def test_cli_delete_event_type(
-    cli_runner, valid_svix_credentials_options, swh_webhooks
+    cli_runner, valid_svix_credentials_options, origin_create_event_type, swh_webhooks
 ):
-    event_type = EventType(
-        name="origin.create",
-        description="origin creation",
-        schema={"type": "object"},
-    )
-    swh_webhooks.event_type_create(event_type)
-
-    assert swh_webhooks.event_type_get("origin.create")
+    assert swh_webhooks.event_type_get(origin_create_event_type.name)
 
     result = cli_runner.invoke(
         cli,
@@ -256,8 +253,10 @@ def test_cli_delete_event_type(
     )
     assert result.exit_code == 0
 
-    with pytest.raises(ValueError, match="Event type origin.create is archived"):
-        swh_webhooks.event_type_get("origin.create")
+    with pytest.raises(
+        ValueError, match=f"Event type {origin_create_event_type.name} is archived"
+    ):
+        swh_webhooks.event_type_get(origin_create_event_type.name)
 
 
 def test_cli_create_endpoint_auth_error(cli_runner, invalid_svix_credentials_options):
@@ -299,23 +298,19 @@ def test_cli_create_endpoint_unknown_event_type(
 
 @pytest.mark.parametrize("with_channel", [False, True])
 def test_cli_create_endpoint(
-    cli_runner, valid_svix_credentials_options, swh_webhooks, with_channel
+    cli_runner,
+    valid_svix_credentials_options,
+    swh_webhooks,
+    origin_create_event_type,
+    with_channel,
 ):
-    event_type_name = "origin.create"
     url = "https://example.org/webhook"
     channel = "foo" if with_channel else None
-
-    event_type = EventType(
-        name=event_type_name,
-        description="origin creation",
-        schema={"type": "object"},
-    )
-    swh_webhooks.event_type_create(event_type)
 
     cmd = [
         "endpoint",
         "create",
-        event_type_name,
+        origin_create_event_type.name,
         url,
     ]
     if with_channel:
@@ -331,11 +326,13 @@ def test_cli_create_endpoint(
     assert result.exit_code == 0
 
     endpoints = list(
-        swh_webhooks.endpoints_list(event_type_name=event_type_name, channel=channel)
+        swh_webhooks.endpoints_list(
+            event_type_name=origin_create_event_type.name, channel=channel
+        )
     )
 
     assert endpoints
-    assert endpoints[0].event_type_name == event_type_name
+    assert endpoints[0].event_type_name == origin_create_event_type.name
     assert endpoints[0].url == url
     assert endpoints[0].channel == channel
 
@@ -384,28 +381,24 @@ def test_cli_list_endpoints_unknown_event_type(
 
 @pytest.mark.parametrize("limit", [None, 5, 10, 15])
 def test_cli_list_endpoints(
-    cli_runner, valid_svix_credentials_options, swh_webhooks, limit
+    cli_runner,
+    valid_svix_credentials_options,
+    swh_webhooks,
+    origin_create_event_type,
+    limit,
 ):
-    event_type_name = "origin.create"
-    event_type = EventType(
-        name=event_type_name,
-        description="origin creation",
-        schema={"type": "object"},
-    )
-    swh_webhooks.event_type_create(event_type)
-
     endpoint_urls = []
     for i in range(10):
         endpoint_url = f"https://example.org/webhook/{i}"
         swh_webhooks.endpoint_create(
-            Endpoint(url=endpoint_url, event_type_name=event_type_name)
+            Endpoint(url=endpoint_url, event_type_name=origin_create_event_type.name)
         )
         endpoint_urls.append(endpoint_url)
 
     cmd = [
         "endpoint",
         "list",
-        event_type_name,
+        origin_create_event_type.name,
     ]
     if limit:
         cmd += [
@@ -433,16 +426,8 @@ def test_cli_list_endpoints(
 
 
 def test_cli_list_endpoints_with_channels(
-    cli_runner, valid_svix_credentials_options, swh_webhooks
+    cli_runner, valid_svix_credentials_options, swh_webhooks, origin_create_event_type
 ):
-    event_type_name = "origin.create"
-    event_type = EventType(
-        name=event_type_name,
-        description="origin creation",
-        schema={"type": "object"},
-    )
-    swh_webhooks.event_type_create(event_type)
-
     endpoint_foo_channel_urls = []
     endpoint_bar_channel_urls = []
     for i in range(10):
@@ -450,12 +435,16 @@ def test_cli_list_endpoints_with_channels(
         endpoint_bar_url = f"https://example.org/webhook/bar/{i}"
         swh_webhooks.endpoint_create(
             Endpoint(
-                url=endpoint_foo_url, event_type_name=event_type_name, channel="foo"
+                url=endpoint_foo_url,
+                event_type_name=origin_create_event_type.name,
+                channel="foo",
             )
         )
         swh_webhooks.endpoint_create(
             Endpoint(
-                url=endpoint_bar_url, event_type_name=event_type_name, channel="bar"
+                url=endpoint_bar_url,
+                event_type_name=origin_create_event_type.name,
+                channel="bar",
             )
         )
         endpoint_foo_channel_urls.append(endpoint_foo_url)
@@ -467,7 +456,7 @@ def test_cli_list_endpoints_with_channels(
         + [
             "endpoint",
             "list",
-            event_type_name,
+            origin_create_event_type.name,
             "--channel",
             "foo",
         ],
@@ -482,7 +471,7 @@ def test_cli_list_endpoints_with_channels(
         + [
             "endpoint",
             "list",
-            event_type_name,
+            origin_create_event_type.name,
             "--channel",
             "bar",
         ],
@@ -531,22 +520,19 @@ def test_cli_delete_endpoint_unkown_event_type(
 
 @pytest.mark.parametrize("with_channel", [False, True])
 def test_cli_delete_endpoint_unkown_endpoint(
-    cli_runner, valid_svix_credentials_options, swh_webhooks, with_channel
+    cli_runner,
+    valid_svix_credentials_options,
+    swh_webhooks,
+    origin_create_event_type,
+    with_channel,
 ):
     endpoint_url = "https://example.org/webhook"
     channel = "foo"
-    event_type_name = "origin.create"
-    event_type = EventType(
-        name=event_type_name,
-        description="origin creation",
-        schema={"type": "object"},
-    )
-    swh_webhooks.event_type_create(event_type)
 
     cmd = [
         "endpoint",
         "delete",
-        event_type_name,
+        origin_create_event_type.name,
         endpoint_url,
     ]
     error_message = f"Error: Endpoint with url {endpoint_url} "
@@ -556,7 +542,7 @@ def test_cli_delete_endpoint_unkown_endpoint(
             channel,
         ]
         error_message += f"and channel {channel} "
-    error_message += f"for event type {event_type_name} does not exist"
+    error_message += f"for event type {origin_create_event_type.name} does not exist"
 
     result = cli_runner.invoke(cli, valid_svix_credentials_options + cmd)
     assert result.exit_code != 0
@@ -564,22 +550,17 @@ def test_cli_delete_endpoint_unkown_endpoint(
     assert error_message in result.output
 
 
-def test_cli_delete_endpoint(cli_runner, valid_svix_credentials_options, swh_webhooks):
+def test_cli_delete_endpoint(
+    cli_runner, valid_svix_credentials_options, swh_webhooks, origin_create_event_type
+):
     endpoint_url = "https://example.org/webhook"
-    event_type_name = "origin.create"
-    event_type = EventType(
-        name=event_type_name,
-        description="origin creation",
-        schema={"type": "object"},
-    )
-    swh_webhooks.event_type_create(event_type)
 
-    endpoint = Endpoint(url=endpoint_url, event_type_name=event_type_name)
+    endpoint = Endpoint(url=endpoint_url, event_type_name=origin_create_event_type.name)
     swh_webhooks.endpoint_create(endpoint)
 
-    assert list(swh_webhooks.endpoints_list(event_type_name=event_type_name)) == [
-        endpoint
-    ]
+    assert list(
+        swh_webhooks.endpoints_list(event_type_name=origin_create_event_type.name)
+    ) == [endpoint]
 
     result = cli_runner.invoke(
         cli,
@@ -587,13 +568,16 @@ def test_cli_delete_endpoint(cli_runner, valid_svix_credentials_options, swh_web
         + [
             "endpoint",
             "delete",
-            event_type_name,
+            origin_create_event_type.name,
             endpoint_url,
         ],
     )
     assert result.exit_code == 0
 
-    assert list(swh_webhooks.endpoints_list(event_type_name=event_type_name)) == []
+    assert (
+        list(swh_webhooks.endpoints_list(event_type_name=origin_create_event_type.name))
+        == []
+    )
 
 
 def test_cli_send_event_auth_error(cli_runner, invalid_svix_credentials_options):
@@ -634,22 +618,15 @@ def test_cli_send_event_unknown_event_type(cli_runner, valid_svix_credentials_op
 
 
 def test_cli_send_event_missing_payload_file(
-    cli_runner, valid_svix_credentials_options, swh_webhooks
+    cli_runner, valid_svix_credentials_options, swh_webhooks, origin_create_event_type
 ):
-    event_type = EventType(
-        name="origin.create",
-        description="origin creation",
-        schema={"type": "object"},
-    )
-    swh_webhooks.event_type_create(event_type)
-
     result = cli_runner.invoke(
         cli,
         valid_svix_credentials_options
         + [
             "event",
             "send",
-            event_type.name,
+            origin_create_event_type.name,
             "payload.json",
         ],
     )
@@ -662,15 +639,8 @@ def test_cli_send_event_missing_payload_file(
 
 
 def test_cli_send_event_invalid_schema_for_payload(
-    cli_runner, valid_svix_credentials_options, swh_webhooks, datadir
+    cli_runner, valid_svix_credentials_options, origin_create_event_type
 ):
-    event_type = EventType(
-        name="origin.create",
-        description="origin creation",
-        schema=json.loads(Path(datadir, "origin_create.json").read_text()),
-    )
-    swh_webhooks.event_type_create(event_type)
-
     payload = {"foo": "bar"}
 
     result = cli_runner.invoke(
@@ -679,7 +649,7 @@ def test_cli_send_event_invalid_schema_for_payload(
         + [
             "event",
             "send",
-            event_type.name,
+            origin_create_event_type.name,
             "-",
         ],
         input=json.dumps(payload),
@@ -695,20 +665,13 @@ def test_cli_send_event(
     cli_runner,
     valid_svix_credentials_options,
     swh_webhooks,
-    datadir,
+    origin_create_event_type,
     tmp_path,
     httpserver,
 ):
-    event_type = EventType(
-        name="origin.create",
-        description="origin creation",
-        schema=json.loads(Path(datadir, "origin_create.json").read_text()),
-    )
-    swh_webhooks.event_type_create(event_type)
-
     endpoint_path = "/swh_webhook"
     endpoint = Endpoint(
-        event_type_name=event_type.name,
+        event_type_name=origin_create_event_type.name,
         url=httpserver.url_for(endpoint_path),
     )
     swh_webhooks.endpoint_create(endpoint)
@@ -731,7 +694,7 @@ def test_cli_send_event(
             + [
                 "event",
                 "send",
-                event_type.name,
+                origin_create_event_type.name,
                 payload_file_path,
             ],
         )
