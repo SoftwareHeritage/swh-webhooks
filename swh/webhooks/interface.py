@@ -94,6 +94,20 @@ def get_config(config_file: Optional[str] = None) -> Dict[str, Any]:
     return webhooks_config.get("webhooks", {})
 
 
+def _check_tz_aware_dt(dt: Optional[datetime]) -> None:
+    if dt is not None and (dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None):
+        raise ValueError(f"Provided date {dt.isoformat()} is not timezone aware")
+
+
+def _check_before_after_parameters(
+    before: Optional[datetime], after: Optional[datetime]
+) -> None:
+    if before is not None and after is not None:
+        raise ValueError(
+            "before and after parameters cannot be combined, only one can be provided"
+        )
+
+
 SvixData = TypeVar("SvixData")
 SvixListIterator = Optional[str]
 
@@ -566,8 +580,8 @@ class Webhooks:
 
         Args:
             endpoint: the endpoint to list sent events
-            before: list sent events before that date if provided
-            after: list sent events after that date if provided
+            before: list sent events before that timezone aware date if provided
+            after: list sent events after that timezone aware date if provided
 
         Returns:
             list of sent events
@@ -576,6 +590,7 @@ class Webhooks:
             ValueError: if the endpoint does not exist
             svix.exceptions.HTTPError: if a request to the Svix REST API fails
         """
+        _check_before_after_parameters(before, after)
 
         # check event type exists
         self.event_type_get(endpoint.event_type_name)
@@ -596,6 +611,9 @@ class Webhooks:
                 )
             except HttpError as e:
                 raise SvixHttpError(e.to_dict())
+
+        _check_tz_aware_dt(before)
+        _check_tz_aware_dt(after)
 
         for attempt in islice(svix_list(list_attempted_messages_by_endpoint), limit):
             message = self.svix_api.message.get(app_uid, attempt.msg_id)
@@ -618,8 +636,8 @@ class Webhooks:
             channel: optional channel name, channels are case-sensitive,
                 and endpoints that are filtering for a specific channel will only
                 get messages sent to that specific channel.
-            before: list sent events before that date if provided
-            after: list sent events after that date if provided
+            before: list sent events before that timezone aware date if provided
+            after: list sent events after that timezone aware date if provided
 
         Returns:
             list of sent events
@@ -628,6 +646,7 @@ class Webhooks:
             ValueError: if the endpoint does not exist
             svix.exceptions.HTTPError: if a request to the Svix REST API fails
         """
+        _check_before_after_parameters(before, after)
 
         # check event type exists
         self.event_type_get(event_type_name)
@@ -671,6 +690,9 @@ class Webhooks:
                     partial(list_attempts_by_message, msg_id=message.id)
                 ):
                     yield message, attempt
+
+        _check_tz_aware_dt(before)
+        _check_tz_aware_dt(after)
 
         endpoints: Dict[str, Endpoint] = {}
         for message, attempt in islice(iter_attempts(), limit):

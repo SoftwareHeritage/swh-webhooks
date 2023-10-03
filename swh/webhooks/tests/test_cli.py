@@ -5,10 +5,12 @@
 
 
 from collections import defaultdict
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 import textwrap
+import time
 
 import pytest
 
@@ -1097,3 +1099,101 @@ def test_cli_list_events_for_endpoint_with_channel(
     events = json.loads(result.output)
 
     assert len(events) == 0
+
+
+@pytest.mark.parametrize(
+    "for_endpoint", [False, True], ids=["for event type", "for endpoint"]
+)
+def test_cli_list_events_date_filtering(
+    cli_runner,
+    valid_svix_credentials_options,
+    swh_webhooks,
+    httpserver,
+    origin_create_event_type,
+    for_endpoint,
+):
+    first_origin_url = "https://git.example.org/project1"
+    second_origin_url = "https://git.example.org/project2"
+    third_origin_url = "https://git.example.org/project3"
+
+    first_origin_payload = {"origin_url": first_origin_url}
+    second_origin_payload = {"origin_url": second_origin_url}
+    third_origin_payload = {"origin_url": third_origin_url}
+
+    endpoint_path = "/swh_webhook"
+    endpoint = Endpoint(
+        event_type_name=origin_create_event_type.name,
+        url=httpserver.url_for(endpoint_path),
+    )
+    swh_webhooks.endpoint_create(endpoint)
+
+    for payload in (first_origin_payload, second_origin_payload, third_origin_payload):
+        httpserver.expect_oneshot_request(
+            endpoint_path,
+            method="POST",
+            json=payload,
+        ).respond_with_data("OK")
+
+    with httpserver.wait() as waiting:
+        # send webhook event on channel
+        swh_webhooks.event_send(origin_create_event_type.name, first_origin_payload)
+        time.sleep(1)
+        after_first_sent_event = datetime.now(tz=timezone.utc)
+        swh_webhooks.event_send(origin_create_event_type.name, second_origin_payload)
+        time.sleep(1)
+        after_second_sent_event = datetime.now(tz=timezone.utc)
+        swh_webhooks.event_send(origin_create_event_type.name, third_origin_payload)
+
+    assert waiting.result
+    httpserver.check()
+
+    base_cmd = [
+        "event",
+        "list",
+        origin_create_event_type.name,
+    ]
+
+    if for_endpoint:
+        base_cmd += [
+            "--endpoint-url",
+            endpoint.url,
+        ]
+
+    for date_options, expected_payloads in [
+        (
+            [
+                "--before",
+                after_first_sent_event.isoformat(),
+            ],
+            [first_origin_payload],
+        ),
+        (
+            [
+                "--after",
+                after_second_sent_event.isoformat(),
+            ],
+            [third_origin_payload],
+        ),
+        (
+            [
+                "--before",
+                after_second_sent_event.isoformat(),
+            ],
+            [second_origin_payload, first_origin_payload],
+        ),
+        (
+            [
+                "--after",
+                after_first_sent_event.isoformat(),
+            ],
+            [third_origin_payload, second_origin_payload],
+        ),
+    ]:
+        result = cli_runner.invoke(
+            cli,
+            valid_svix_credentials_options + base_cmd + date_options,
+        )
+
+        assert result.exit_code == 0
+        events = json.loads(result.output)
+        assert [event["payload"] for event in events] == expected_payloads
