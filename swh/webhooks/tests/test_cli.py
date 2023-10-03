@@ -299,7 +299,9 @@ def test_cli_create_endpoint_unknown_event_type(
     assert "Error: Event type origin.create does not exist" in result.output
 
 
-@pytest.mark.parametrize("with_channel", [False, True])
+@pytest.mark.parametrize(
+    "with_channel", [False, True], ids=["without channel", "with channel"]
+)
 def test_cli_create_endpoint(
     cli_runner,
     valid_svix_credentials_options,
@@ -382,7 +384,7 @@ def test_cli_list_endpoints_unknown_event_type(
     assert "Error: Event type foo does not exist" in result.output
 
 
-@pytest.mark.parametrize("limit", [None, 5, 10, 15])
+@pytest.mark.parametrize("limit", [None, 5, 10, 15], ids=lambda li: f"limit={li}")
 def test_cli_list_endpoints(
     cli_runner,
     valid_svix_credentials_options,
@@ -521,7 +523,9 @@ def test_cli_delete_endpoint_unkown_event_type(
     assert "Error: Event type origin.create does not exist" in result.output
 
 
-@pytest.mark.parametrize("with_channel", [False, True])
+@pytest.mark.parametrize(
+    "with_channel", [False, True], ids=["without channel", "with channel"]
+)
 def test_cli_delete_endpoint_unkown_endpoint(
     cli_runner,
     valid_svix_credentials_options,

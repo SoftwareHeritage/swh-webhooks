@@ -651,7 +651,7 @@ def test_list_sent_events_date_filtering(
     assert sent_events_before != sent_events_after
 
 
-@pytest.mark.parametrize("limit", [1, 5, 10])
+@pytest.mark.parametrize("limit", [1, 5, 10], ids=lambda li: f"limit={li}")
 def test_list_sent_events_with_limit(
     swh_webhooks,
     origin_create_event_type,
