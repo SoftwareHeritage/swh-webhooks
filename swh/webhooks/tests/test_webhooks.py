@@ -651,7 +651,7 @@ def test_list_sent_events_date_filtering(
     assert sent_events_before != sent_events_after
 
 
-@pytest.mark.parametrize("limit", [1, 5, 10])
+@pytest.mark.parametrize("limit", [1, 5, 10], ids=lambda li: f"limit={li}")
 def test_list_sent_events_with_limit(
     swh_webhooks,
     origin_create_event_type,
@@ -698,3 +698,52 @@ def test_list_sent_events_with_limit(
         )
         == limit
     )
+
+
+@pytest.mark.parametrize(
+    "for_endpoint", [False, True], ids=["for event type", "for endpoint"]
+)
+def test_list_sent_events_bad_parameters(
+    swh_webhooks,
+    origin_create_event_type,
+    origin_create_endpoint1_no_channel,
+    for_endpoint,
+):
+    swh_webhooks.event_type_create(origin_create_event_type)
+    swh_webhooks.endpoint_create(origin_create_endpoint1_no_channel)
+
+    before = after = datetime.now()
+
+    with pytest.raises(
+        ValueError,
+        match="before and after parameters cannot be combined, only one can be provided",
+    ):
+        if for_endpoint:
+            list(
+                swh_webhooks.sent_events_list_for_endpoint(
+                    origin_create_endpoint1_no_channel, before=before, after=after
+                )
+            )
+        else:
+            list(
+                swh_webhooks.sent_events_list_for_event_type(
+                    origin_create_event_type.name, before=before, after=after
+                )
+            )
+
+    with pytest.raises(
+        ValueError,
+        match=f"Provided date {before.isoformat()} is not timezone aware",
+    ):
+        if for_endpoint:
+            list(
+                swh_webhooks.sent_events_list_for_endpoint(
+                    origin_create_endpoint1_no_channel, before=before
+                )
+            )
+        else:
+            list(
+                swh_webhooks.sent_events_list_for_event_type(
+                    origin_create_event_type.name, after=after
+                )
+            )

@@ -320,6 +320,22 @@ class EventListJSONEncoder(json.JSONEncoder):
     help=("List events sent to the given channel"),
 )
 @click.option(
+    "--before",
+    "-b",
+    default=None,
+    # svix api only allows timezone aware datetime
+    type=click.DateTime(formats=("%Y-%m-%dT%H:%M:%S.%f%z",)),
+    help=("List events created before a specific timezone aware date"),
+)
+@click.option(
+    "--after",
+    "-a",
+    default=None,
+    # svix api only allows timezone aware datetime
+    type=click.DateTime(formats=("%Y-%m-%dT%H:%M:%S.%f%z",)),
+    help=("List events created after a specific timezone date"),
+)
+@click.option(
     "--limit",
     "-l",
     default=10,
@@ -327,7 +343,7 @@ class EventListJSONEncoder(json.JSONEncoder):
     help=("Maximum number of events to list"),
 )
 @click.pass_context
-def event_list(ctx, event_type_name, endpoint_url, channel, limit):
+def event_list(ctx, event_type_name, endpoint_url, channel, before, after, limit):
     """List recent events sent to endpoints.
 
     It outputs a JSON list filled with events data.
@@ -343,12 +359,16 @@ def event_list(ctx, event_type_name, endpoint_url, channel, limit):
             sent_events = ctx.obj["webhooks"].sent_events_list_for_endpoint(
                 endpoint=Endpoint(endpoint_url, event_type_name, channel),
                 limit=limit,
+                before=before,
+                after=after,
             )
         else:
             sent_events = ctx.obj["webhooks"].sent_events_list_for_event_type(
                 event_type_name=event_type_name,
                 channel=channel,
                 limit=limit,
+                before=before,
+                after=after,
             )
         events = [asdict(event) for event in sent_events]
         click.echo(json.dumps(events, cls=EventListJSONEncoder, indent=4))
