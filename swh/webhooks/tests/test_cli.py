@@ -15,12 +15,7 @@ import time
 import pytest
 
 from swh.webhooks.cli import webhooks_cli_group as cli
-from swh.webhooks.interface import Endpoint, EventType, Webhooks
-
-
-@pytest.fixture
-def swh_webhooks(svix_server_url, svix_auth_token):
-    return Webhooks(svix_server_url=svix_server_url, svix_auth_token=svix_auth_token)
+from swh.webhooks.interface import Endpoint, EventType
 
 
 def test_cli_missing_svix_token(cli_runner):

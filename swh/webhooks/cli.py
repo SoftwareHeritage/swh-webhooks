@@ -1,4 +1,4 @@
-# Copyright (C) The Software Heritage developers
+# Copyright (C) 2023  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -7,6 +7,7 @@ import datetime
 import json
 from pathlib import Path
 import textwrap
+from typing import List, Optional
 
 import click
 
@@ -49,8 +50,11 @@ from swh.core.cli import swh as swh_cli_group
 @click.pass_context
 def webhooks_cli_group(ctx, config_file, svix_url, svix_token):
     """Software Heritage Webhooks management built on top of the open-source framework Svix."""
+    from swh.core import config
 
     ctx.ensure_object(dict)
+    conf = config.read(config_file)
+    ctx.obj["config"] = conf
     try:
         from swh.webhooks.interface import Webhooks
 
@@ -374,3 +378,72 @@ def event_list(ctx, event_type_name, endpoint_url, channel, before, after, limit
         click.echo(json.dumps(events, cls=EventListJSONEncoder, indent=4))
     except Exception as e:
         ctx.fail(str(e))
+
+
+@webhooks_cli_group.command("journal-client")
+@click.option(
+    "--broker", "brokers", type=str, multiple=True, help="Kafka broker to connect to."
+)
+@click.option(
+    "--prefix", type=str, default=None, help="Prefix of Kafka topic names to read from."
+)
+@click.option("--group-id", type=str, help="Consumer/group id for reading from Kafka.")
+@click.option(
+    "--stop-after-objects",
+    "-m",
+    default=None,
+    type=int,
+    help="Maximum number of objects to replay. Default is to run forever.",
+)
+@click.option(
+    "--batch-size",
+    "-b",
+    default=200,
+    type=int,
+    help="Maximum number of kafka messages by batch. Default is 200.",
+)
+@click.pass_context
+def journal_client(
+    ctx,
+    brokers: List[str],
+    prefix: str,
+    group_id: str,
+    stop_after_objects: Optional[int],
+    batch_size: Optional[int],
+):
+    from swh.journal.client import get_journal_client
+    from swh.webhooks.journal_client import process
+
+    cfg = ctx.obj["config"]
+    journal_cfg = cfg.get("journal", {})
+
+    if brokers:
+        journal_cfg["brokers"] = brokers
+    if not journal_cfg.get("brokers"):
+        raise ValueError("The brokers configuration is mandatory.")
+
+    if prefix:
+        journal_cfg["prefix"] = prefix
+    if group_id:
+        journal_cfg["group_id"] = group_id
+
+    if stop_after_objects:
+        journal_cfg["stop_after_objects"] = stop_after_objects
+    if batch_size:
+        journal_cfg["batch_size"] = batch_size
+
+    client = get_journal_client(
+        cls="kafka",
+        **journal_cfg,
+    )
+
+    webhooks = ctx.obj["webhooks"]
+
+    try:
+        process(client, webhooks)
+    except KeyboardInterrupt:
+        ctx.exit(0)
+    else:
+        print("Done.")
+    finally:
+        client.close()

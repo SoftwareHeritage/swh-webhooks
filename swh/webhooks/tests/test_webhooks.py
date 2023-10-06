@@ -16,15 +16,10 @@ import pytest
 from svix.webhooks import Webhook
 from werkzeug import Request, Response
 
-from swh.webhooks.interface import Endpoint, EventType, Webhooks
+from swh.webhooks.interface import Endpoint, EventType
 
 if shutil.which("docker") is None:
     pytest.skip("skipping tests as docker command is missing", allow_module_level=True)
-
-
-@pytest.fixture
-def swh_webhooks(svix_server_url, svix_auth_token):
-    return Webhooks(svix_server_url=svix_server_url, svix_auth_token=svix_auth_token)
 
 
 @pytest.fixture

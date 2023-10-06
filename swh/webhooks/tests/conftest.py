@@ -92,3 +92,10 @@ def svix_server_url():
 @pytest.fixture
 def svix_auth_token():
     return _svix_auth_token
+
+
+@pytest.fixture
+def swh_webhooks(svix_server_url, svix_auth_token):
+    from swh.webhooks.interface import Webhooks
+
+    return Webhooks(svix_server_url=svix_server_url, svix_auth_token=svix_auth_token)
