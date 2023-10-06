@@ -138,6 +138,32 @@ def test_cli_add_event_type(
     assert swh_webhooks.event_type_get("origin.create")
 
 
+def test_cli_register_default_event_types_auth_error(
+    cli_runner, invalid_svix_credentials_options
+):
+    result = cli_runner.invoke(
+        cli, invalid_svix_credentials_options + ["event-type", "register-defaults"]
+    )
+
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Svix server returned error 'authentication_failed' with detail 'Invalid token'"
+        in result.output
+    )
+
+
+def test_cli_register_default_event_types(
+    cli_runner, valid_svix_credentials_options, swh_webhooks
+):
+    result = cli_runner.invoke(
+        cli, valid_svix_credentials_options + ["event-type", "register-defaults"]
+    )
+    assert result.exit_code == 0
+
+    assert swh_webhooks.event_types_list()
+
+
 def test_cli_get_event_type_auth_error(cli_runner, invalid_svix_credentials_options):
     result = cli_runner.invoke(
         cli,

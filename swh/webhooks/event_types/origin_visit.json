@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "title": "origin.visit",
+  "description": "This event is triggered when a new visit of a software origin was performed",
+  "properties": {
+    "origin_url": {
+      "type": "string",
+      "description": "The URL of the visited software origin",
+      "format": "iri"
+    },
+    "visit_type": {
+      "type": "string",
+      "description": "The type of visit performed"
+    },
+    "visit_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The date the visit was performed"
+    },
+    "visit_status": {
+      "type": "string",
+      "enum": [
+        "created",
+        "ongoing",
+        "full",
+        "partial",
+        "not_found",
+        "failed"
+      ],
+      "description": "The status of the visit"
+    },
+    "snapshot_swhid": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^swh:1:snp:[0-9a-f]{40}$"
+    }
+  },
+  "required": [
+    "origin_url",
+    "visit_type",
+    "visit_date",
+    "visit_status",
+    "snapshot_swhid"
+  ]
+}

@@ -5,6 +5,7 @@
 
 import datetime
 import json
+import os
 from pathlib import Path
 import textwrap
 from typing import List, Optional
@@ -68,6 +69,32 @@ def webhooks_cli_group(ctx, config_file, svix_url, svix_token):
 @webhooks_cli_group.group("event-type")
 def event_type():
     pass
+
+
+@event_type.command("register-defaults")
+@click.pass_context
+def event_type_register_defaults(ctx):
+    """Register default event types defined in swh-webhooks package."""
+    from swh.webhooks.interface import EventType
+
+    try:
+        for root, _, files in os.walk(
+            os.path.join(os.path.dirname(__file__), "event_types")
+        ):
+            for f in files:
+                if not f.endswith(".json"):
+                    continue
+                with open(os.path.join(root, f), "r") as schema:
+                    event_type_schema = json.load(schema)
+                ctx.obj["webhooks"].event_type_create(
+                    EventType(
+                        name=event_type_schema["title"],
+                        description=event_type_schema["description"],
+                        schema=event_type_schema,
+                    )
+                )
+    except Exception as e:
+        ctx.fail(str(e))
 
 
 @event_type.command("add")

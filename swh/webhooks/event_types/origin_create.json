@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "title": "origin.create",
+  "description": "This event is triggered when a new software origin is added to the archive",
+  "properties": {
+    "origin_url": {
+      "type": "string",
+      "description": "The URL of the newly created software origin",
+      "format": "iri"
+    }
+  },
+  "required": [
+    "origin_url"
+  ]
+}
