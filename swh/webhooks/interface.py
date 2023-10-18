@@ -316,9 +316,12 @@ class Webhooks:
         """
 
         def list_event_type(iterator: SvixListIterator) -> ListResponseEventTypeOut:
-            return self.svix_api.event_type.list(
-                EventTypeListOptions(with_content=True, iterator=iterator)
-            )
+            try:
+                return self.svix_api.event_type.list(
+                    EventTypeListOptions(with_content=True, iterator=iterator)
+                )
+            except HttpError as e:
+                raise SvixHttpError(e.to_dict())
 
         event_types = []
         for event_type in svix_list(list_event_type):

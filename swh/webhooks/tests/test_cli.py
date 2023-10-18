@@ -115,6 +115,17 @@ def origin_create_event_type(datadir, swh_webhooks):
     return event_type
 
 
+@pytest.fixture
+def origin_visit_event_type(datadir, swh_webhooks):
+    event_type = EventType(
+        name="origin.visit",
+        description="origin visit",
+        schema=json.loads(Path(datadir, "origin_visit.json").read_text()),
+    )
+    swh_webhooks.event_type_create(event_type)
+    return event_type
+
+
 def test_cli_add_event_type_auth_error(
     cli_runner, invalid_svix_credentials_options, add_event_type_cmd
 ):
@@ -281,6 +292,58 @@ def test_cli_delete_event_type(
         ValueError, match=f"Event type {origin_create_event_type.name} is archived"
     ):
         swh_webhooks.event_type_get(origin_create_event_type.name)
+
+
+def test_cli_list_event_types_auth_error(cli_runner, invalid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        invalid_svix_credentials_options
+        + [
+            "event-type",
+            "list",
+        ],
+    )
+    assert result.exit_code != 0
+
+    assert (
+        "Error: Svix server returned error 'authentication_failed' with detail 'Invalid token'"
+        in result.output
+    )
+
+
+def test_cli_list_event_types_none(cli_runner, valid_svix_credentials_options):
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event-type",
+            "list",
+        ],
+    )
+    assert result.exit_code == 0
+
+    assert "No event type registered" in result.output
+
+
+def test_cli_list_event_types(
+    cli_runner,
+    valid_svix_credentials_options,
+    origin_create_event_type,
+    origin_visit_event_type,
+):
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options
+        + [
+            "event-type",
+            "list",
+        ],
+    )
+    assert result.exit_code == 0
+
+    for event_type in (origin_create_event_type, origin_visit_event_type):
+        assert event_type.name in result.output
+        assert event_type.description in result.output
 
 
 def test_cli_create_endpoint_auth_error(cli_runner, invalid_svix_credentials_options):

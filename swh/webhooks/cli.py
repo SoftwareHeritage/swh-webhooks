@@ -174,6 +174,22 @@ def event_type_delete(ctx, name):
         ctx.fail(str(e))
 
 
+@event_type.command("list")
+@click.pass_context
+def event_type_list(ctx):
+    """List webhook event types."""
+    try:
+        event_types = ctx.obj["webhooks"].event_types_list()
+        if event_types:
+            click.echo("Registered event types:\n")
+            for event_type in event_types:
+                click.echo(f"{event_type.name}:\n  {event_type.description}")
+        else:
+            click.echo("No event type registered")
+    except Exception as e:
+        ctx.fail(str(e))
+
+
 @webhooks_cli_group.group("endpoint")
 def endpoint():
     pass
