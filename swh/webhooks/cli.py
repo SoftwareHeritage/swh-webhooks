@@ -227,6 +227,38 @@ def endpoint_create(ctx, event_type_name, url, channel):
         ctx.fail(str(e))
 
 
+@endpoint.command("get-secret")
+@click.argument("event-type-name", nargs=1, required=True)
+@click.argument("url", nargs=1, required=True)
+@click.option(
+    "--channel",
+    "-c",
+    default=None,
+    help=(
+        "Optional channel the endpoint listens to. Channels are an extra "
+        "dimension of filtering messages that is orthogonal to event types"
+    ),
+)
+@click.pass_context
+def endpoint_get_secret(ctx, event_type_name, url, channel):
+    """Get endpoint secret used to verify the authenticity of webhook messages.
+
+    EVENT_TYPE_NAME must be a string in the form '<group>.<event>'.
+
+    URL corresponds to the endpoint receiving webhook messages.
+    """
+    from swh.webhooks.interface import Endpoint
+
+    try:
+        click.echo(
+            ctx.obj["webhooks"].endpoint_get_secret(
+                Endpoint(url=url, event_type_name=event_type_name, channel=channel)
+            )
+        )
+    except Exception as e:
+        ctx.fail(str(e))
+
+
 @endpoint.command("list")
 @click.argument("event-type-name", nargs=1, required=True)
 @click.option(

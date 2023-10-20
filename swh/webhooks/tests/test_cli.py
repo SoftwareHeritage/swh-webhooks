@@ -432,6 +432,15 @@ def test_cli_create_endpoint(
     )
     assert result.exit_code == 0
 
+    # check endpoint secret retrieval
+    cmd[1] = "get-secret"
+    result = cli_runner.invoke(
+        cli,
+        valid_svix_credentials_options + cmd,
+    )
+    assert result.exit_code == 0
+    assert result.output.startswith("whsec_")
+
 
 def test_cli_list_endpoints_auth_error(cli_runner, invalid_svix_credentials_options):
     result = cli_runner.invoke(
