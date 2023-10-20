@@ -28,3 +28,11 @@ def get_verified_webhook_payload(
         return webhook.verify(request_data, request_headers)
     except WebhookVerificationError:
         raise ValueError("Webhook payload verification failed")
+
+
+def format_docstring(**substitutions):
+    def decorator(f):
+        f.__doc__ = f.__doc__.format(**substitutions)
+        return f
+
+    return decorator

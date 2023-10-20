@@ -31,6 +31,7 @@ from svix.api import (
     EndpointHeadersIn,
     EndpointIn,
     EndpointListOptions,
+    EndpointSecretRotateIn,
     EventTypeIn,
     EventTypeListOptions,
     EventTypeUpdate,
@@ -51,6 +52,9 @@ from svix.internal.openapi_client.types import Unset
 from svix.webhooks import Webhook
 
 from swh.core.config import load_from_envvar, read_raw_config
+from swh.webhooks.utils import format_docstring
+
+ENDPOINT_SECRET_REGEXP = "^whsec_[a-zA-Z0-9+/=]{32,100}$"
 
 
 def _svix_api(
@@ -357,19 +361,26 @@ class Webhooks:
             else:
                 raise SvixHttpError(error_dict)
 
-    def endpoint_create(self, endpoint: Endpoint) -> None:
-        """Create an endpoint to receive webhook messages.
-
-        That operation is idempotent.
+    @format_docstring(endpoint_secret_regexp=ENDPOINT_SECRET_REGEXP)
+    def endpoint_create(self, endpoint: Endpoint, secret: Optional[str] = None) -> None:
+        """Create or update an endpoint to receive webhook messages.
 
         Args:
             endpoint: the endpoint to create
+            secret: secret used to verify the authenticity of webhook messages,
+                it must match the regular expression ``{endpoint_secret_regexp}``
+                and is automatically generated or rotated if not provided
 
         Raises:
             ValueError: if the event type associated to the endpoint does not exist
             svix.exceptions.HTTPError: if a request to the Svix REST API fails
         """
         self.event_type_get(endpoint.event_type_name)
+
+        if secret and not re.match(ENDPOINT_SECRET_REGEXP, secret):
+            raise ValueError(
+                f"Secret must match regular expression {ENDPOINT_SECRET_REGEXP}"
+            )
 
         _, app_uid = _get_app_name_and_uid(endpoint.event_type_name)
         endpoint_uid = endpoint.uid
@@ -393,12 +404,17 @@ class Webhooks:
                     filter_types=[endpoint.event_type_name],
                     channels=[channel] if channel else None,
                     metadata=metadata,
+                    secret=secret,
                 ),
             )
         except HttpError as http_error:
             error_dict = http_error.to_dict()
             if error_dict["code"] != "conflict":
                 raise SvixHttpError(error_dict)
+            else:
+                self.svix_api.endpoint.rotate_secret(
+                    app_uid, endpoint_uid, EndpointSecretRotateIn(key=secret)
+                )
 
         # Add SWH event type name in webhook POST request headers
         self.svix_api.endpoint.update_headers(

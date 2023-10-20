@@ -384,7 +384,13 @@ def test_cli_create_endpoint_unknown_event_type(
 
 
 @pytest.mark.parametrize(
-    "with_channel", [False, True], ids=["without channel", "with channel"]
+    "with_channel,with_secret",
+    [
+        pytest.param(False, False, id="without channel and secret"),
+        pytest.param(False, True, id="without channel and with secret"),
+        pytest.param(True, False, id="with channel and without secret"),
+        pytest.param(True, True, id="with channel and secret"),
+    ],
 )
 def test_cli_create_endpoint(
     cli_runner,
@@ -392,6 +398,7 @@ def test_cli_create_endpoint(
     swh_webhooks,
     origin_create_event_type,
     with_channel,
+    with_secret,
 ):
     url = "https://example.org/webhook"
     channel = "foo" if with_channel else None
@@ -406,6 +413,12 @@ def test_cli_create_endpoint(
         cmd += [
             "--channel",
             channel,
+        ]
+    if with_secret:
+        secret = "whsec_" + "b" * 32
+        cmd += [
+            "--secret",
+            secret,
         ]
 
     result = cli_runner.invoke(
@@ -433,13 +446,26 @@ def test_cli_create_endpoint(
     assert result.exit_code == 0
 
     # check endpoint secret retrieval
-    cmd[1] = "get-secret"
+    cmd = [
+        "endpoint",
+        "get-secret",
+        origin_create_event_type.name,
+        url,
+    ]
+    if with_channel:
+        cmd += [
+            "--channel",
+            channel,
+        ]
     result = cli_runner.invoke(
         cli,
         valid_svix_credentials_options + cmd,
     )
     assert result.exit_code == 0
-    assert result.output.startswith("whsec_")
+    if with_secret:
+        assert result.output[:-1] == secret
+    else:
+        assert result.output.startswith("whsec_")
 
 
 def test_cli_list_endpoints_auth_error(cli_runner, invalid_svix_credentials_options):

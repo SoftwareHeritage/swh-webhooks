@@ -207,11 +207,18 @@ def endpoint():
         "dimension of filtering messages that is orthogonal to event types"
     ),
 )
+@click.option(
+    "--secret",
+    "-s",
+    default=None,
+    help=(
+        "Optional secret used to verify authenticity of webhook messages, "
+        "it is automatically generated or rotated otherwise"
+    ),
+)
 @click.pass_context
-def endpoint_create(ctx, event_type_name, url, channel):
-    """Create an endpoint to receive webhook messages of a specific event type.
-
-    That operation is idempotent.
+def endpoint_create(ctx, event_type_name, url, channel, secret):
+    """Create or update an endpoint to receive webhook messages of a specific event type.
 
     EVENT_TYPE_NAME must be a string in the form '<group>.<event>'.
 
@@ -221,7 +228,8 @@ def endpoint_create(ctx, event_type_name, url, channel):
 
     try:
         ctx.obj["webhooks"].endpoint_create(
-            Endpoint(url=url, event_type_name=event_type_name, channel=channel)
+            Endpoint(url=url, event_type_name=event_type_name, channel=channel),
+            secret=secret,
         )
     except Exception as e:
         ctx.fail(str(e))

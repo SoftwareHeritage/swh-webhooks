@@ -190,9 +190,71 @@ def test_create_endpoints(
     swh_webhooks.endpoint_create(origin_create_endpoint1_no_channel)
     swh_webhooks.endpoint_create(origin_visit_endpoint1_channel1)
 
-    assert swh_webhooks.endpoint_get_secret(origin_create_endpoint1_no_channel)
+    secret_create = swh_webhooks.endpoint_get_secret(origin_create_endpoint1_no_channel)
+    assert secret_create.startswith("whsec_")
 
-    assert swh_webhooks.endpoint_get_secret(origin_visit_endpoint1_channel1)
+    secret_visit = swh_webhooks.endpoint_get_secret(origin_visit_endpoint1_channel1)
+    assert secret_visit.startswith("whsec_")
+
+
+def test_create_endpoints_with_secret(
+    swh_webhooks,
+    origin_create_event_type,
+    origin_visit_event_type,
+    origin_create_endpoint1_no_channel,
+    origin_visit_endpoint1_channel1,
+):
+    swh_webhooks.event_type_create(origin_create_event_type)
+    swh_webhooks.event_type_create(origin_visit_event_type)
+
+    secret_create = "whsec_" + "a" * 32
+    swh_webhooks.endpoint_create(
+        origin_create_endpoint1_no_channel, secret=secret_create
+    )
+    secret_visit = "whsec_" + "b" * 32
+    swh_webhooks.endpoint_create(origin_visit_endpoint1_channel1, secret=secret_visit)
+
+    assert (
+        swh_webhooks.endpoint_get_secret(origin_create_endpoint1_no_channel)
+        == secret_create
+    )
+
+    assert (
+        swh_webhooks.endpoint_get_secret(origin_visit_endpoint1_channel1)
+        == secret_visit
+    )
+
+
+def test_create_endpoint_and_update_secret(
+    swh_webhooks,
+    origin_visit_event_type,
+    origin_visit_endpoint1_channel1,
+):
+    swh_webhooks.event_type_create(origin_visit_event_type)
+
+    # explicitly set a secret for the endpoint
+    first_secret = "whsec_" + "a" * 32
+    swh_webhooks.endpoint_create(origin_visit_endpoint1_channel1, secret=first_secret)
+    assert (
+        swh_webhooks.endpoint_get_secret(origin_visit_endpoint1_channel1)
+        == first_secret
+    )
+
+    # explicitly update a secret for the endpoint
+    second_secret = "whsec_" + "b" * 32
+    swh_webhooks.endpoint_create(origin_visit_endpoint1_channel1, secret=second_secret)
+
+    assert (
+        swh_webhooks.endpoint_get_secret(origin_visit_endpoint1_channel1)
+        == second_secret
+    )
+
+    # updating an endpoint without an explicit secret should generate a new one
+    swh_webhooks.endpoint_create(origin_visit_endpoint1_channel1)
+    assert swh_webhooks.endpoint_get_secret(origin_visit_endpoint1_channel1) not in (
+        first_secret,
+        second_secret,
+    )
 
 
 def test_list_endpoints(
