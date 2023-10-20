@@ -13,10 +13,10 @@ import time
 
 from jsonschema.exceptions import SchemaError, ValidationError
 import pytest
-from svix.webhooks import Webhook
 from werkzeug import Request, Response
 
 from swh.webhooks.interface import Endpoint, EventType
+from swh.webhooks.utils import get_verified_webhook_payload
 
 if shutil.which("docker") is None:
     pytest.skip("skipping tests as docker command is missing", allow_module_level=True)
@@ -362,15 +362,17 @@ def test_send_event_without_channels_filtering(
         assert "Webhook-Signature" in request.headers
 
         if request.url.endswith(WEBHOOK_FIRST_ENDPOINT_PATH):
-            webhook = Webhook(origin_create_endpoint1_no_channel_secret)
+            payload = get_verified_webhook_payload(
+                request.data, request.headers, origin_create_endpoint1_no_channel_secret
+            )
         else:
-            webhook = Webhook(origin_create_endpoint2_no_channel_secret)
-
-        webhook.verify(request.data, dict(request.headers))
+            payload = get_verified_webhook_payload(
+                request.data, request.headers, origin_create_endpoint2_no_channel_secret
+            )
 
         key = (request.url, request.headers["Webhook-Id"])
         request_headers[key] = dict(request.headers)
-        request_payloads[key] = request.json
+        request_payloads[key] = payload
 
         return Response("OK")
 
@@ -465,17 +467,21 @@ def test_send_event_with_channels_filtering(
         assert "Webhook-Signature" in request.headers
 
         if request.url.endswith(WEBHOOK_FIRST_ENDPOINT_PATH):
-            webhook = Webhook(origin_visit_endpoint1_channel1_secret)
+            payload = get_verified_webhook_payload(
+                request.data, request.headers, origin_visit_endpoint1_channel1_secret
+            )
         elif request.url.endswith(WEBHOOK_SECOND_ENDPOINT_PATH):
-            webhook = Webhook(origin_visit_endpoint2_channel2_secret)
+            payload = get_verified_webhook_payload(
+                request.data, request.headers, origin_visit_endpoint2_channel2_secret
+            )
         else:
-            webhook = Webhook(origin_visit_endpoint3_no_channel_secret)
+            payload = get_verified_webhook_payload(
+                request.data, request.headers, origin_visit_endpoint3_no_channel_secret
+            )
 
         key = (request.url, request.headers["Webhook-Id"])
         request_headers[key] = dict(request.headers)
-        request_payloads[key] = request.json
-
-        webhook.verify(request.data, dict(request.headers))
+        request_payloads[key] = payload
 
         return Response("OK")
 
