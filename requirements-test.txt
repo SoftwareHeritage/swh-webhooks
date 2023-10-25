@@ -2,7 +2,7 @@ docker-compose
 netifaces
 pytest
 pytest-click
-pytest-docker-compose
+pytest-docker
 pytest-httpserver
 pytest-mock
 types-jsonschema

@@ -11,7 +11,7 @@ services:
     volumes:
       - "./config.toml:/config.toml:ro"
     ports:
-      - "8071:8071"
+      - "0:8071"
     depends_on:
       - svix-postgres
       - svix-redis

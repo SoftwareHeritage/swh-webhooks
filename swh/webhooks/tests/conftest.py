@@ -3,8 +3,9 @@
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
+
 import os
-from subprocess import run
+from subprocess import check_output, run
 
 import netifaces
 import pytest
@@ -13,18 +14,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 _SVIX_ORG_ID = "org_swh_webhooks"
-# svix server container exposes the 8071 port to the docker host,
-# we use the docker network gateway IP in case the tests are also
-# executed in a container (as in SWH Jenkins)
-_SVIX_SERVER_URL = "http://172.17.0.1:8071"
-_svix_service = None
 _svix_auth_token = None
-
-
-@pytest.fixture(autouse=True, scope="session")
-def docker_compose_down():
-    """Ensure docker services are down and volumes removed prior running tests"""
-    run(["docker-compose", "down", "-v"], cwd=os.path.dirname(__file__))
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -33,37 +23,69 @@ def docker_pull_svix_image():
     run(["docker", "pull", "svix/svix-server"], cwd=os.path.dirname(__file__))
 
 
+@pytest.fixture(scope="session")
+def docker_compose_command():
+    try:
+        # use docker compose v2 if available
+        check_output(["docker", "compose", "version"])
+        return "docker compose"
+    except Exception:
+        # fallback on v1 otherwise
+        return "docker-compose"
+
+
+@pytest.fixture(scope="session")
+def docker_compose_file():
+    return os.path.join(os.path.dirname(__file__), "docker-compose.yml")
+
+
+@pytest.fixture(scope="session")
+def docker_compose(docker_services):
+    return docker_services._docker_compose
+
+
+@pytest.fixture(scope="session")
+def svix_server_url(docker_services):
+    # svix server container exposes a free port to the docker host,
+    # we use the docker network gateway IP in case the tests are also
+    # executed in a container (as in SWH Jenkins)
+    svix_server_port = docker_services.port_for("svix-backend", 8071)
+    return f"http://172.17.0.1:{svix_server_port}"
+
+
 @pytest.fixture(autouse=True, scope="session")
-def svix_server(session_scoped_container_getter):
+def svix_server(docker_compose, svix_server_url):
     """Spawn a Svix server for the tests session using docker-compose"""
-    global _svix_service, _svix_auth_token
+    global _svix_auth_token
 
     # wait for the svix backend service to be up and responding
     request_session = requests.Session()
     retries = Retry(total=10, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
     request_session.mount("http://", HTTPAdapter(max_retries=retries))
-    _svix_service = session_scoped_container_getter.get("svix-backend")
-    api_url = f"{_SVIX_SERVER_URL}/api/v1/health/"
+    api_url = f"{svix_server_url}/api/v1/health/"
     response = request_session.get(api_url)
     assert response
 
     # generate bearer token to authorize communication with the svix server
-    exec = _svix_service.create_exec(f"svix-server jwt generate {_SVIX_ORG_ID}")
-    exec_output = _svix_service.start_exec(exec["Id"])
-    _svix_auth_token = exec_output.decode().replace("Token (Bearer): ", "")[:-1]
-
-    return _svix_service
+    exec_output = docker_compose.execute(
+        f"exec -T svix-backend svix-server jwt generate {_SVIX_ORG_ID}"
+    )
+    _svix_auth_token = (
+        exec_output.decode()
+        .replace("Token (Bearer): ", "")
+        .replace("\r", "")
+        .replace("\n", "")
+    )
 
 
 @pytest.fixture(autouse=True)
-def svix_wiper():
+def svix_wiper(docker_compose):
     """Ensure stateless tests"""
     yield
     # wipe svix database after each test to ensure stateless tests
-    exec = _svix_service.create_exec(
-        f"svix-server wipe --yes-i-know-what-im-doing {_SVIX_ORG_ID}"
+    docker_compose.execute(
+        f"exec -T svix-backend svix-server wipe --yes-i-know-what-im-doing {_SVIX_ORG_ID}"
     )
-    _svix_service.start_exec(exec["Id"])
 
 
 def _httpserver_ip_address():
@@ -82,11 +104,6 @@ def httpserver_listen_address():
     httpserver_ip_address = _httpserver_ip_address()
     assert httpserver_ip_address
     return (httpserver_ip_address, 0)
-
-
-@pytest.fixture
-def svix_server_url():
-    return _SVIX_SERVER_URL
 
 
 @pytest.fixture
