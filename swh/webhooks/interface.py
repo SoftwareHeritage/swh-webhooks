@@ -10,18 +10,7 @@ from itertools import islice
 import json
 import os
 import re
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Protocol,
-    Tuple,
-    TypeVar,
-    Union,
-)
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, TypeVar, Union
 import uuid
 
 import jsonschema
@@ -50,6 +39,7 @@ from svix.api import (
 from svix.exceptions import HttpError
 from svix.internal.openapi_client.types import Unset
 from svix.webhooks import Webhook
+from typing_extensions import Protocol
 
 from swh.core.config import load_from_envvar, read_raw_config
 from swh.webhooks.utils import format_docstring
