@@ -5,7 +5,8 @@
 
 
 import os
-from subprocess import check_output, run
+import shutil
+from subprocess import CalledProcessError, check_output, run
 
 import netifaces
 import pytest
@@ -15,6 +16,31 @@ from urllib3.util.retry import Retry
 
 _SVIX_ORG_ID = "org_swh_webhooks"
 _svix_auth_token = None
+
+
+def pytest_collection_modifyitems(config, items):
+    """Tests for swh-webhooks require docker compose (v2 or v1) so skip them
+    if it is not installed on host."""
+    skipper = None
+    if shutil.which("docker") is None:
+        skipper = pytest.mark.skip(reason="skipping test as docker command is missing")
+    else:
+        docker_compose_available = False
+        try:
+            # check if docker compose v2 if available
+            check_output(["docker", "compose", "version"])
+            docker_compose_available = True
+        except CalledProcessError:
+            # check if docker compose v1 if available
+            docker_compose_available = shutil.which("docker-compose") is not None
+        finally:
+            if not docker_compose_available:
+                skipper = pytest.mark.skip(
+                    reason="skipping test as docker compose is missing"
+                )
+    if skipper is not None:
+        for item in items:
+            item.add_marker(skipper)
 
 
 @pytest.fixture(autouse=True, scope="session")
