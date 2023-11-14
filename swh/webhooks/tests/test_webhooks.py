@@ -8,7 +8,6 @@ from itertools import chain
 import json
 from pathlib import Path
 import random
-import shutil
 import time
 
 from jsonschema.exceptions import SchemaError, ValidationError
@@ -17,9 +16,6 @@ from werkzeug import Request, Response
 
 from swh.webhooks.interface import Endpoint, EventType
 from swh.webhooks.utils import get_verified_webhook_payload
-
-if shutil.which("docker") is None:
-    pytest.skip("skipping tests as docker command is missing", allow_module_level=True)
 
 
 @pytest.fixture

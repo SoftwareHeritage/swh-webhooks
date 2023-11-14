@@ -1,4 +1,3 @@
-docker-compose
 netifaces
 pytest
 pytest-click
