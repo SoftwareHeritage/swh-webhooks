@@ -566,7 +566,7 @@ class Webhooks:
                 app_uid,
                 MessageIn(
                     event_type=event_type_name,
-                    payload=payload,
+                    payload=dict(sorted(payload.items())),
                     channels=[_gen_uuid(channel)] if channel else None,
                     payload_retention_period=self.config.get(
                         "event_retention_period", 90
@@ -724,7 +724,7 @@ class Webhooks:
     ) -> SentEvent:
         endpoint_secret = self.endpoint_get_secret(endpoint)
         webhook = Webhook(endpoint_secret)
-        json_payload = json.dumps(payload, separators=(",", ":"))
+        json_payload = json.dumps(payload, sort_keys=True)
         return SentEvent(
             event_type_name=endpoint.event_type_name,
             channel=endpoint.channel,
