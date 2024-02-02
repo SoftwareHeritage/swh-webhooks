@@ -8,4 +8,3 @@ types-jsonschema
 types-PyYAML
 types-requests
 types-urllib3
-urllib3 < 2
