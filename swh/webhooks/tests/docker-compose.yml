@@ -8,8 +8,8 @@ services:
       - svix-redis
     environment:
       WAIT_FOR: "true" # We want to wait for the default services
-    volumes:
-      - "./config.toml:/config.toml:ro"
+    env_file:
+      - path: ./svix.env
     ports:
       - "0:8071"
     depends_on:
