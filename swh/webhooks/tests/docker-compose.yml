@@ -9,7 +9,7 @@ services:
     environment:
       WAIT_FOR: "true" # We want to wait for the default services
     env_file:
-      - path: ./svix.env
+      - ./svix.env
     ports:
       - "0:8071"
     depends_on:
