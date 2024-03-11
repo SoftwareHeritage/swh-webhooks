@@ -1,4 +1,4 @@
-# Copyright (C) 2023  The Software Heritage developers
+# Copyright (C) 2023-2024  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -42,6 +42,7 @@ from svix.webhooks import Webhook
 from typing_extensions import Protocol
 
 from swh.core.config import load_from_envvar, read_raw_config
+from swh.webhooks.svix_retry import svix_retry
 from swh.webhooks.utils import format_docstring
 
 ENDPOINT_SECRET_REGEXP = "^whsec_[a-zA-Z0-9+/=]{32,100}$"
@@ -447,9 +448,9 @@ class Webhooks:
                 app_uid,
                 EndpointListOptions(
                     iterator=iterator,
-                    order=Ordering.ASCENDING
-                    if ascending_order
-                    else Ordering.DESCENDING,
+                    order=(
+                        Ordering.ASCENDING if ascending_order else Ordering.DESCENDING
+                    ),
                 ),
             )
 
@@ -530,6 +531,7 @@ class Webhooks:
             else:
                 raise SvixHttpError(error_dict)
 
+    @svix_retry()
     def event_send(
         self,
         event_type_name: str,

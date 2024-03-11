@@ -1,10 +1,12 @@
-# Copyright (C) 2023  The Software Heritage developers
+# Copyright (C) 2023-2024  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
 
+import json
 import os
+from pathlib import Path
 import shutil
 from subprocess import CalledProcessError, check_output, run
 
@@ -13,6 +15,8 @@ import pytest
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from swh.webhooks.interface import EventType
 
 _SVIX_ORG_ID = "org_swh_webhooks"
 _svix_auth_token = None
@@ -142,3 +146,32 @@ def swh_webhooks(svix_server_url, svix_auth_token):
     from swh.webhooks.interface import Webhooks
 
     return Webhooks(svix_server_url=svix_server_url, svix_auth_token=svix_auth_token)
+
+
+@pytest.fixture
+def origin_create_event_type(datadir):
+    return EventType(
+        name="origin.create",
+        description=(
+            "This event is triggered when a new software origin is added to the archive"
+        ),
+        schema=json.loads(Path(datadir, "origin_create.json").read_text()),
+    )
+
+
+@pytest.fixture
+def origin_visit_event_type(datadir):
+    return EventType(
+        name="origin.visit",
+        description=(
+            "This event is triggered when a new visit of a software origin was performed"
+        ),
+        schema=json.loads(Path(datadir, "origin_visit.json").read_text()),
+    )
+
+
+@pytest.fixture(autouse=True)
+def svix_retry_sleep_mocker(mocker):
+    from swh.webhooks.interface import Webhooks
+
+    mocker.patch.object(Webhooks.event_send.retry, "sleep")

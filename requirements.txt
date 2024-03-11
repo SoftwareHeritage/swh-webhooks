@@ -1,4 +1,5 @@
 click
 jsonschema[format]
 svix==1.23.0
+tenacity
 typing-extensions

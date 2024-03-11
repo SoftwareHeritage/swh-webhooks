@@ -1,12 +1,10 @@
-# Copyright (C) 2023  The Software Heritage developers
+# Copyright (C) 2023-2024  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
 
 from datetime import datetime, timezone
 from itertools import chain
-import json
-from pathlib import Path
 import random
 import time
 
@@ -16,29 +14,6 @@ from werkzeug import Request, Response
 
 from swh.webhooks.interface import Endpoint, EventType
 from swh.webhooks.utils import get_verified_webhook_payload
-
-
-@pytest.fixture
-def origin_create_event_type(datadir):
-    return EventType(
-        name="origin.create",
-        description=(
-            "This event is triggered when a new software origin is added to the archive"
-        ),
-        schema=json.loads(Path(datadir, "origin_create.json").read_text()),
-    )
-
-
-@pytest.fixture
-def origin_visit_event_type(datadir):
-    return EventType(
-        name="origin.visit",
-        description=(
-            "This event is triggered when a new visit of a software origin was performed"
-        ),
-        schema=json.loads(Path(datadir, "origin_visit.json").read_text()),
-    )
-
 
 WEBHOOK_FIRST_ENDPOINT_PATH = "/swh/webhook"
 WEBHOOK_SECOND_ENDPOINT_PATH = "/swh/webhook/other"
