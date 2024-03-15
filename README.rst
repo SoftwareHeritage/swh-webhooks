@@ -35,7 +35,7 @@ type has its own list of endpoints).
 Channels are an extra dimension of filtering events that is orthogonal to event types.
 Events are sent (or not sent) to endpoints based on the following conditions:
 
-- Endpoint has no channel set: this is a catch-all, all events are sent to to it,
+- Endpoint has no channel set: this is a catch-all, all events are sent to it,
   regardless of whether the event had a channel set.
 - Both endpoint and event have a channel set: if there's the same, the event is sent
   to the endpoint.
@@ -51,4 +51,4 @@ to all endpoints listening to the event type.
 If the JSON payload does not match the JSON schema of the event type, an error is raised.
 
 Event can optionally be sent on a specific channel orthogonal to the event type, the
-conditions of its develivery is detailed in the previous section.
+conditions of its delivery is detailed in the previous section.
