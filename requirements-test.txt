@@ -1,5 +1,5 @@
 netifaces
-pytest
+pytest >= 8.1
 pytest-click
 pytest-docker
 pytest-httpserver
