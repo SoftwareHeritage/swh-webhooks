@@ -1,4 +1,4 @@
 click
 jsonschema[format]
-svix
+svix==1.23.0
 typing-extensions
