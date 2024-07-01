@@ -1234,7 +1234,11 @@ def test_cli_list_events_date_filtering(
     httpserver,
     origin_create_event_type,
     for_endpoint,
+    mocker,
+    mock_sleep,
 ):
+    mocker.stop(mock_sleep)
+
     first_origin_url = "https://git.example.org/project1"
     second_origin_url = "https://git.example.org/project2"
     third_origin_url = "https://git.example.org/project3"

@@ -171,7 +171,5 @@ def origin_visit_event_type(datadir):
 
 
 @pytest.fixture(autouse=True)
-def svix_retry_sleep_mocker(mocker):
-    from swh.webhooks.interface import Webhooks
-
-    mocker.patch.object(Webhooks.event_send.retry, "sleep")
+def mock_sleep(mocker):
+    return mocker.patch("time.sleep")

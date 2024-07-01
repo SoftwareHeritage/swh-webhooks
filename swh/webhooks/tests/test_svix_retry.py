@@ -19,7 +19,7 @@ def assert_sleep_calls(mock_sleep, mocker, nb_failures):
     )
 
 
-def test_event_send_retry(swh_webhooks, origin_create_event_type, mocker):
+def test_event_send_retry(swh_webhooks, origin_create_event_type, mocker, mock_sleep):
     swh_webhooks.event_type_create(origin_create_event_type)
     event_type = swh_webhooks.event_type_get(origin_create_event_type.name)
 
@@ -30,14 +30,12 @@ def test_event_send_retry(swh_webhooks, origin_create_event_type, mocker):
         event_type,
     ]
 
-    sleep = mocker.patch.object(swh_webhooks.event_send.retry, "sleep")
-
     assert swh_webhooks.event_send(
         origin_create_event_type.name,
         {"origin_url": "https://example.org/user/project"},
     )
 
-    assert_sleep_calls(sleep, mocker, nb_failures=2)
+    assert_sleep_calls(mock_sleep, mocker, nb_failures=2)
 
 
 def test_event_send_retry_and_reraise(swh_webhooks, origin_create_event_type, mocker):
