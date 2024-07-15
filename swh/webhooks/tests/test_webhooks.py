@@ -619,7 +619,11 @@ def test_list_sent_events_date_filtering(
     origin_create_event_type,
     origin_create_endpoint1_no_channel,
     httpserver,
+    mocker,
+    mock_sleep,
 ):
+    mocker.stop(mock_sleep)
+
     swh_webhooks.event_type_create(origin_create_event_type)
     swh_webhooks.endpoint_create(origin_create_endpoint1_no_channel)
 
