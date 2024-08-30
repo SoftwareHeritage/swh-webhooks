@@ -43,14 +43,16 @@ def process_origin_visit_statuses(
                     "visit_type": origin_visit_status["type"],
                     "visit_date": origin_visit_status["date"].isoformat(),
                     "visit_status": origin_visit_status["status"],
-                    "snapshot_swhid": str(
-                        CoreSWHID(
-                            object_type=ObjectType.SNAPSHOT,
-                            object_id=origin_visit_status["snapshot"],
+                    "snapshot_swhid": (
+                        str(
+                            CoreSWHID(
+                                object_type=ObjectType.SNAPSHOT,
+                                object_id=origin_visit_status["snapshot"],
+                            )
                         )
-                    )
-                    if origin_visit_status["snapshot"]
-                    else None,
+                        if origin_visit_status["snapshot"]
+                        else None
+                    ),
                 },
                 channel=origin_visit_status["origin"],
             )
