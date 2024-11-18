@@ -396,11 +396,15 @@ def test_send_event_without_channels_filtering(
 
         if request.url.endswith(WEBHOOK_FIRST_ENDPOINT_PATH):
             payload = get_verified_webhook_payload(
-                request.data, request.headers, origin_create_endpoint1_no_channel_secret
+                request.data,
+                dict(request.headers),
+                origin_create_endpoint1_no_channel_secret,
             )
         else:
             payload = get_verified_webhook_payload(
-                request.data, request.headers, origin_create_endpoint2_no_channel_secret
+                request.data,
+                dict(request.headers),
+                origin_create_endpoint2_no_channel_secret,
             )
 
         key = (request.url, request.headers["Webhook-Id"])
@@ -501,15 +505,21 @@ def test_send_event_with_channels_filtering(
 
         if request.url.endswith(WEBHOOK_FIRST_ENDPOINT_PATH):
             payload = get_verified_webhook_payload(
-                request.data, request.headers, origin_visit_endpoint1_channel1_secret
+                request.data,
+                dict(request.headers),
+                origin_visit_endpoint1_channel1_secret,
             )
         elif request.url.endswith(WEBHOOK_SECOND_ENDPOINT_PATH):
             payload = get_verified_webhook_payload(
-                request.data, request.headers, origin_visit_endpoint2_channel2_secret
+                request.data,
+                dict(request.headers),
+                origin_visit_endpoint2_channel2_secret,
             )
         else:
             payload = get_verified_webhook_payload(
-                request.data, request.headers, origin_visit_endpoint3_no_channel_secret
+                request.data,
+                dict(request.headers),
+                origin_visit_endpoint3_no_channel_secret,
             )
 
         key = (request.url, request.headers["Webhook-Id"])
