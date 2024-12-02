@@ -1,7 +1,7 @@
 version: "3.7"
 services:
   svix-backend:
-    image: svix/svix-server:v1.34
+    image: svix/svix-server:v1.35
     network_mode: bridge
     links:
       - svix-postgres

@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 import shutil
-from subprocess import CalledProcessError, check_output, run
+from subprocess import CalledProcessError, check_output
 
 import netifaces
 import pytest
@@ -45,12 +45,6 @@ def pytest_collection_modifyitems(config, items):
     if skipper is not None:
         for item in items:
             item.add_marker(skipper)
-
-
-@pytest.fixture(autouse=True, scope="session")
-def docker_pull_svix_image():
-    """Ensure to use latest svix/svix-server docker image"""
-    run(["docker", "pull", "svix/svix-server"], cwd=os.path.dirname(__file__))
 
 
 @pytest.fixture(scope="session")
