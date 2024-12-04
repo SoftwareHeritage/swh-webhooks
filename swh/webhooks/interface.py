@@ -726,7 +726,7 @@ class Webhooks:
     ) -> SentEvent:
         endpoint_secret = self.endpoint_get_secret(endpoint)
         webhook = Webhook(endpoint_secret)
-        json_payload = json.dumps(payload, sort_keys=True)
+        json_payload = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return SentEvent(
             event_type_name=endpoint.event_type_name,
             channel=endpoint.channel,
