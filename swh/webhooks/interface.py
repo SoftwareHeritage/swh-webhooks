@@ -114,10 +114,11 @@ class SvixListResponse(Protocol[SvixData]):
 
 
 def svix_list(
-    svix_list_request: Callable[[SvixListIterator], SvixListResponse[SvixData]]
+    svix_list_request: Callable[[SvixListIterator], SvixListResponse[SvixData]],
 ) -> Iterator[SvixData]:
     iterator = None
     while True:
+        assert not isinstance(iterator, Unset)
         response = svix_list_request(iterator)
         yield from response.data
         iterator = response.iterator
