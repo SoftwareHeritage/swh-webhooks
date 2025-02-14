@@ -5,6 +5,7 @@ pytest-docker
 pytest-httpserver
 pytest-mock
 types-jsonschema
+types-netifaces
 types-PyYAML
 types-requests
 types-urllib3
