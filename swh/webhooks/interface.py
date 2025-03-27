@@ -28,7 +28,8 @@ from svix.api import (
     ListResponseEventTypeOut,
     ListResponseMessageAttemptOut,
     ListResponseMessageOut,
-    MessageAttemptListOptions,
+    MessageAttemptListByEndpointOptions,
+    MessageAttemptListByMsgOptions,
     MessageAttemptOut,
     MessageIn,
     MessageListOptions,
@@ -37,7 +38,6 @@ from svix.api import (
     SvixOptions,
 )
 from svix.exceptions import HttpError
-from svix.internal.openapi_client.types import Unset
 from svix.webhooks import Webhook
 from typing_extensions import Protocol
 
@@ -109,7 +109,7 @@ SvixListIterator = Optional[str]
 
 class SvixListResponse(Protocol[SvixData]):
     data: List[SvixData]
-    iterator: Union[Unset, None, str]
+    iterator: Union[None, str]
     done: bool
 
 
@@ -118,7 +118,6 @@ def svix_list(
 ) -> Iterator[SvixData]:
     iterator = None
     while True:
-        assert not isinstance(iterator, Unset)
         response = svix_list_request(iterator)
         yield from response.data
         iterator = response.iterator
@@ -617,7 +616,7 @@ class Webhooks:
                 return self.svix_api.message_attempt.list_by_endpoint(
                     app_uid,
                     endpoint_uid,
-                    MessageAttemptListOptions(
+                    MessageAttemptListByEndpointOptions(
                         iterator=iterator, before=before, after=after
                     ),
                 )
@@ -689,7 +688,7 @@ class Webhooks:
                 return self.svix_api.message_attempt.list_by_msg(
                     app_uid,
                     msg_id,
-                    MessageAttemptListOptions(
+                    MessageAttemptListByMsgOptions(
                         iterator=iterator, before=before, after=after
                     ),
                 )

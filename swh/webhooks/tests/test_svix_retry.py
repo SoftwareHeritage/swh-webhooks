@@ -5,7 +5,7 @@
 
 
 import pytest
-from svix.internal.openapi_client.errors import UnexpectedStatus
+from svix.api.errors.http_error import HttpError
 
 from swh.webhooks.svix_retry import SVIX_RETRY_MAX_ATTEMPTS, SVIX_RETRY_WAIT_EXP_BASE
 
@@ -25,8 +25,8 @@ def test_event_send_retry(swh_webhooks, origin_create_event_type, mocker, mock_s
 
     event_type_get = mocker.patch.object(swh_webhooks, "event_type_get")
     event_type_get.side_effect = [
-        UnexpectedStatus(status_code=503, content=b""),
-        UnexpectedStatus(status_code=503, content=b""),
+        HttpError.from_dict({"code": 503}),
+        HttpError.from_dict({"code": 503}),
         event_type,
     ]
 
@@ -41,10 +41,10 @@ def test_event_send_retry(swh_webhooks, origin_create_event_type, mocker, mock_s
 def test_event_send_retry_and_reraise(swh_webhooks, origin_create_event_type, mocker):
     event_type_get = mocker.patch.object(swh_webhooks, "event_type_get")
     event_type_get.side_effect = [
-        UnexpectedStatus(status_code=500, content=b"")
+        HttpError.from_dict({"code": 500}),
     ] * SVIX_RETRY_MAX_ATTEMPTS
 
-    with pytest.raises(UnexpectedStatus):
+    with pytest.raises(HttpError):
         swh_webhooks.event_send(
             origin_create_event_type.name,
             {"origin_url": "https://example.org/user/project"},

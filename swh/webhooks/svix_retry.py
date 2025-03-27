@@ -6,7 +6,7 @@
 import logging
 
 from httpx import ConnectError, TimeoutException
-from svix.internal.openapi_client.errors import UnexpectedStatus
+from svix.api.errors.http_error import HttpError
 from tenacity import retry
 from tenacity.before_sleep import before_sleep_log
 from tenacity.retry import retry_if_exception
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def is_retryable_exception(exception):
-    return isinstance(exception, (ConnectError, TimeoutException, UnexpectedStatus))
+    return isinstance(exception, (ConnectError, TimeoutException, HttpError))
 
 
 def svix_retry():
