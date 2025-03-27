@@ -4,6 +4,7 @@ pytest-click
 pytest-docker
 pytest-httpserver
 pytest-mock
+swh.journal[pytest] >= 2.0.0
 types-jsonschema
 types-netifaces
 types-PyYAML
