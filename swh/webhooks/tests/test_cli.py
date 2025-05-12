@@ -41,7 +41,7 @@ def test_cli_svix_config_using_options(cli_runner, svix_server_url, svix_auth_to
             "event-type",
         ],
     )
-    assert result.exit_code == 0
+    assert result.exit_code == 2
 
 
 def test_cli_svix_config_using_envvars(
@@ -50,7 +50,7 @@ def test_cli_svix_config_using_envvars(
     monkeypatch.setenv("SVIX_URL", svix_server_url)
     monkeypatch.setenv("SVIX_TOKEN", svix_auth_token)
     result = cli_runner.invoke(cli, ["event-type"])
-    assert result.exit_code == 0
+    assert result.exit_code == 2
 
 
 @pytest.fixture
@@ -72,7 +72,7 @@ def configfile_path(tmp_path, svix_server_url, svix_auth_token):
 
 def test_cli_svix_config_using_configfile_option(cli_runner, configfile_path):
     result = cli_runner.invoke(cli, ["-C", configfile_path, "event-type"])
-    assert result.exit_code == 0
+    assert result.exit_code == 2
 
 
 def test_cli_svix_config_using_configfile_envvar(
@@ -80,7 +80,7 @@ def test_cli_svix_config_using_configfile_envvar(
 ):
     monkeypatch.setenv("SWH_CONFIG_FILENAME", configfile_path)
     result = cli_runner.invoke(cli, ["-C", configfile_path, "event-type"])
-    assert result.exit_code == 0
+    assert result.exit_code == 2
 
 
 @pytest.fixture

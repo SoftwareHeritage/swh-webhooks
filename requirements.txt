@@ -1,4 +1,4 @@
-click
+click >= 8.2.0
 jsonschema[format]
 svix==1.62.0
 tenacity >= 8.4.2
