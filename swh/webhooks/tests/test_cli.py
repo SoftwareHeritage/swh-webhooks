@@ -1,4 +1,4 @@
-# Copyright (C) 2023  The Software Heritage developers
+# Copyright (C) 2023-2026  The Software Heritage developers
 # See the AUTHORS file at the top-level directory of this distribution
 # License: GNU General Public License version 3, or any later version
 # See top-level LICENSE file for more information
@@ -57,16 +57,12 @@ def test_cli_svix_config_using_envvars(
 def configfile_path(tmp_path, svix_server_url, svix_auth_token):
     configfile_path = os.path.join(tmp_path, "webhooks.yml")
     with open(configfile_path, "w") as configfile:
-        configfile.write(
-            textwrap.dedent(
-                f"""
+        configfile.write(textwrap.dedent(f"""
                 webhooks:
                     svix:
                         server_url: {svix_server_url}
                         auth_token: {svix_auth_token}
-                """
-            )
-        )
+                """))
     return configfile_path
 
 
